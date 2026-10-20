@@ -81,6 +81,11 @@ pub fn fit(s: &str, room: f32, max: usize) -> usize {
 /// Draw `s` with its top left at (x, y), each font pixel a `scale` by
 /// `scale` square of dots.
 pub fn draw(c: &mut Canvas, x: f32, y: f32, scale: usize, s: &str, col: Rgb) {
+    dots(x, y, scale, s, |px, py| c.plot(px, py, col));
+}
+
+/// Every dot `s` sets at (x, y) and `scale`.
+pub fn dots(x: f32, y: f32, scale: usize, s: &str, mut f: impl FnMut(f32, f32)) {
     for (i, ch) in s.chars().enumerate() {
         let gx = x + (i * ADVANCE * scale) as f32;
         for (row, bits) in glyph(ch).iter().enumerate() {
@@ -90,7 +95,7 @@ pub fn draw(c: &mut Canvas, x: f32, y: f32, scale: usize, s: &str, col: Rgb) {
                 }
                 for dy in 0..scale {
                     for dx in 0..scale {
-                        c.plot(gx + (column * scale + dx) as f32, y + (row * scale + dy) as f32, col);
+                        f(gx + (column * scale + dx) as f32, y + (row * scale + dy) as f32);
                     }
                 }
             }

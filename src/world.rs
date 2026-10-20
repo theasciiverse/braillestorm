@@ -386,8 +386,11 @@ impl World {
     }
 
     /// The wave banner: the wave in big Braille letters with the details
-    /// in small ones under it, typed out, held, then faded, over a soft
-    /// darkening of the field, in the colour that stands out from the grid.
+    /// in small ones under it, typed out, held, then faded, straight over
+    /// the field in the colour that stands out from the grid. Only the cells
+    /// the letters' dots fall in are cleared first (a cell has one colour,
+    /// so grid dots there would take the letters' and blur them); the grid
+    /// shows everywhere else, between the strokes too.
     fn draw_banner(&mut self) {
         let Some(b) = &self.banner else { return };
         let (w, h) = self.dims();
@@ -406,9 +409,6 @@ impl World {
         let gap = text::height(small) * 0.5;
         let total = text::height(big) + rest.len() as f32 * (text::height(small) + gap) + gap;
         let top = ((h - total) / 3.0).max(2.0);
-        let widest = lines.iter().enumerate().map(|(i, l)| text::width(l, if i == 0 { big } else { small })).fold(0.0, f32::max);
-        let left = (w - widest) / 2.0;
-        self.canvas.dim(left - 4.0, top - 4.0, left + widest + 4.0, top + total + 2.0, 1.0 - 0.95 * fade, 10.0);
         // typed out line after line, a few characters a frame, with a cursor
         let all: usize = lines.iter().map(|l| l.chars().count()).sum();
         let mut shown = (b.age as usize * all / BANNER_TYPE as usize).max(1);
@@ -425,6 +425,8 @@ impl World {
             // the headline full strength, the details a little softer
             let k = fade * if i == 0 { 1.0 } else { 0.75 };
             let x = (w - text::width(l, scale)) / 2.0;
+            let canvas = &mut self.canvas;
+            text::dots(x, y, scale, &part, |px, py| canvas.dim_cell(px, py, 1.0 - fade));
             text::draw(&mut self.canvas, x, y, scale, &part, [hue[0] * k, hue[1] * k, hue[2] * k]);
             y += text::height(scale) + gap;
             if i == 0 {

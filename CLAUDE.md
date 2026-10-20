@@ -230,9 +230,12 @@ blinking shield.
 **Banner**, at each wave's start, during the breather: `[WAVE N]` in big
 Braille letters with `spawn: ...`, what is new (`new: fork, splits when
 shot`, `rush: ...`) and the clear bonus under it in smaller ones. Our own
-5x7 font, drawn as light so it glows; no box, the field dimmed softly
-behind it (David: the graphics are too good for a line box, use oversized
-Braille text in a colour contrasting with the game). It types out over
+5x7 font, drawn as light so it glows; no box and no dark backdrop (David:
+the graphics are too good for a line box, use oversized Braille text in a
+colour contrasting with the game, and keep the play area visible under
+it). Only the cells the letters' dots fall in are cleared, since a cell has
+one colour and grid dots there would blur the letters; the grid shows
+everywhere else, between the strokes too. It types out over
 40 frames with a block cursor, holds, and fades over the last 25 of 150.
 Colour by grid colour (F3): amber on blue, magenta on green, cyan on
 amber, lime on violet. Headline up to six times the font, about a fifth of

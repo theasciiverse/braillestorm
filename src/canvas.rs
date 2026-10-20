@@ -71,22 +71,19 @@ impl Canvas {
         }
     }
 
-    /// Darken the light in a rectangle of dots to `keep` of itself, easing
-    /// back to full over `feather` dots outside it, so text laid on top
-    /// reads without a box.
-    pub fn dim(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, keep: f32, feather: f32) {
-        let ys = (y0 - feather).max(0.0) as usize..((y1 + feather).max(0.0) as usize).min(self.h);
-        let xs = (x0 - feather).max(0.0) as usize..((x1 + feather).max(0.0) as usize).min(self.w);
-        for y in ys {
-            let dy = (y0 - y as f32).max(y as f32 - y1).max(0.0);
-            for x in xs.clone() {
-                let dx = (x0 - x as f32).max(x as f32 - x1).max(0.0);
-                let out = (dx.max(dy) / feather.max(1.0)).min(1.0);
-                let k = keep + (1.0 - keep) * out;
-                let p = &mut self.light[y * self.w + x];
-                p[0] *= k;
-                p[1] *= k;
-                p[2] *= k;
+    /// Scale the light of the whole cell holding dot (x, y) by `keep`, so
+    /// what is drawn there next owns the cell's one colour.
+    pub fn dim_cell(&mut self, x: f32, y: f32, keep: f32) {
+        if x < 0.0 || y < 0.0 || x as usize >= self.w || y as usize >= self.h {
+            return;
+        }
+        let (cx, cy) = (x as usize / 2 * 2, y as usize / 4 * 4);
+        for dy in 0..4 {
+            for dx in 0..2 {
+                let p = &mut self.light[(cy + dy) * self.w + cx + dx];
+                p[0] *= keep;
+                p[1] *= keep;
+                p[2] *= keep;
             }
         }
     }
