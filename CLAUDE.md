@@ -20,6 +20,14 @@ licence not chosen, so not in `hub/catalog` yet), preview
 `asciiverse/braillestorm.cast` copied to the site's `casts/`, local Linux
 build packaged by the site's `dev/build_catalog.py` into `dev-releases/`.
 Own git repo, branch `main`, private at github.com/theasciiverse/braillestorm.
+Release workflow `.github/workflows/release.yml` (2026-10-20, on ASCII
+Wars' pattern): glibc Linux on Ubuntu 22.04 (x86_64, aarch64; libudev
+linked dynamically, the manifest's system_deps), macOS and Windows (MSVC),
+x86_64 and ARM64 each; archives `braillestorm-<target>` with the stripped
+binary and README.md (no LICENSE until one is chosen), plus SHA256SUMS.
+Tags `v<version>-av.<n>`, first `v0.1.0-av.1`. Only the Linux steps were
+run here (no rustup for other targets), so macOS and Windows build first
+on GitHub.
 
 The preview (`asciiverse/record-preview.sh`, hub's `castrec.py`): `--demo
 --seed 7 --fps 20 --time 18`, 25 s, still at 23 s, best of eight takes. It
