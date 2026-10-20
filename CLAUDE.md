@@ -228,8 +228,10 @@ bursts every enemy (no points); it returns after 100 frames with a 2 s
 blinking shield.
 
 **Banner**, at each wave's start, during the breather: `[WAVE N]` in big
-Braille letters with `spawn: ...`, what is new (`new: fork, splits when
-shot`, `rush: ...`) and the clear bonus under it in smaller ones. Our own
+Braille letters and, under it at half the size, at most a word or two
+(David: little text, so it does not take the eye off the action): what is
+new (`new: cursor`, `new: packs`, `new: fork`, `new: corners`, `rush!`) and
+the clear bonus (`+300`). Our own
 5x7 font, drawn as light so it glows; no box and no dark backdrop (David:
 the graphics are too good for a line box, use oversized Braille text in a
 colour contrasting with the game, and keep the play area visible under
@@ -239,8 +241,8 @@ everywhere else, between the strokes too. It types out over
 40 frames with a block cursor, holds, and fades over the last 25 of 150.
 Colour by grid colour (F3): amber on blue, magenta on green, cyan on
 amber, lime on violet. Headline up to six times the font, about a fifth of
-the field's height; details up to three, one size below; lines too wide
-for the window are left out (at 60x20 only the headline).
+the field's height; the rest at half the headline's scale; lines too wide
+for the window are left out.
 
 Measured 2026-10-20 with waves (`--bench 36000`, seeds 1 to 3): the
 autopilot, which aims perfectly, reaches game over at waves 30 to 38 at

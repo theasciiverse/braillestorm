@@ -103,24 +103,16 @@ pub struct Enemies {
     wait: u32,
 }
 
-/// Which kinds a wave sends, and what is new in it, for its banner.
-pub fn wave_notes(wave: u32) -> (String, Option<&'static str>) {
-    let mut kinds = vec!["glob"];
-    if wave >= 2 {
-        kinds.push("cursor");
-    }
-    if wave >= 4 {
-        kinds.push("fork");
-    }
-    let new = match wave {
-        2 => Some("new: cursor, it hunts you"),
-        3 => Some("new: globs in packs"),
-        4 => Some("new: fork, splits when shot"),
-        5 => Some("new: cursors from the corners"),
-        _ if rush(wave) => Some("rush: cursors from every corner"),
+/// What is new in a wave, in a word or two for its banner, if anything.
+pub fn wave_note(wave: u32) -> Option<&'static str> {
+    match wave {
+        2 => Some("new: cursor"),
+        3 => Some("new: packs"),
+        4 => Some("new: fork"),
+        5 => Some("new: corners"),
+        _ if rush(wave) => Some("rush!"),
         _ => None,
-    };
-    (format!("spawn: {}", kinds.join(" ")), new)
+    }
 }
 
 /// Every fifth wave from the tenth is a rush of corner cursors.

@@ -294,14 +294,13 @@ impl World {
     /// A wave begins: the clear bonus for the last one, and its banner.
     fn new_wave(&mut self, nw: NewWave) {
         let mut lines = vec![format!("[wave {}]", nw.wave)];
-        let (spawn, new) = enemies::wave_notes(nw.wave);
-        lines.push(spawn);
-        lines.extend(new.map(String::from));
+        // a glance, not a read: the wave, what is new, the bonus
+        lines.extend(enemies::wave_note(nw.wave).map(String::from));
         // the first wave of a game has nothing before it to have cleared
         if nw.wave > self.start_wave && nw.cleared && !self.lost_in_wave {
             let bonus = CLEAR_BONUS * (nw.wave - 1) as u64;
             self.add_score(bonus);
-            lines.push(format!("wave {} cleared  +{}", nw.wave - 1, thousands(bonus)));
+            lines.push(format!("+{}", thousands(bonus)));
         }
         log::info!("wave {} begins at frame {}: {lines:?}", nw.wave, self.frames);
         self.lost_in_wave = false;
@@ -402,7 +401,7 @@ impl World {
         // detail lines too wide for even the smallest letters are left out
         let lines: Vec<&String> = b.lines.iter().enumerate().filter(|&(i, l)| i == 0 || text::fit(l, room, 1) > 0).map(|(_, l)| l).collect();
         let rest = &lines[1..];
-        let small = rest.iter().map(|l| text::fit(l, room, 3)).min().unwrap_or(1).min(big.saturating_sub(1).max(1));
+        let small = rest.iter().map(|l| text::fit(l, room, 3)).min().unwrap_or(1).min((big / 2).max(1));
         if big == 0 {
             return;
         }
@@ -422,7 +421,7 @@ impl World {
             if n < l.chars().count() && b.age < BANNER_TYPE {
                 part.push('\u{2588}');
             }
-            // the headline full strength, the details a little softer
+            // the headline full strength, the rest a little softer
             let k = fade * if i == 0 { 1.0 } else { 0.75 };
             let x = (w - text::width(l, scale)) / 2.0;
             let canvas = &mut self.canvas;
