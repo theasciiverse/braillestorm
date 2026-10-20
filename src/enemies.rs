@@ -103,16 +103,10 @@ pub struct Enemies {
     wait: u32,
 }
 
-/// What is new in a wave, in a word or two for its banner, if anything.
+/// A warning for a wave's banner, if it needs one: only rushes do (the
+/// enemies explain themselves, a rush changes what to do next).
 pub fn wave_note(wave: u32) -> Option<&'static str> {
-    match wave {
-        2 => Some("new: cursor"),
-        3 => Some("new: packs"),
-        4 => Some("new: fork"),
-        5 => Some("new: corners"),
-        _ if rush(wave) => Some("rush!"),
-        _ => None,
-    }
+    rush(wave).then_some("rush!")
 }
 
 /// Every fifth wave from the tenth is a rush of corner cursors.

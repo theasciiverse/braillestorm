@@ -228,10 +228,10 @@ bursts every enemy (no points); it returns after 100 frames with a 2 s
 blinking shield.
 
 **Banner**, at each wave's start, during the breather: `[WAVE N]` in big
-Braille letters and, under it at half the size, at most a word or two
-(David: little text, so it does not take the eye off the action): what is
-new (`new: cursor`, `new: packs`, `new: fork`, `new: corners`, `rush!`) and
-the clear bonus (`+300`). Our own
+Braille letters and, under it at half the size, only `rush!` on a rush
+wave and the clear bonus (`+300`) (David: little text, so it does not take
+the eye off the action; no "new: fork" notes, the enemies explain
+themselves, while a rush warning changes what to do next). Our own
 5x7 font, drawn as light so it glows; no box and no dark backdrop (David:
 the graphics are too good for a line box, use oversized Braille text in a
 colour contrasting with the game, and keep the play area visible under
