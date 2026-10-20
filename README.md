@@ -7,9 +7,11 @@ freeware GridWars (2005); no code, art or sound is taken from it.
 
 Fly a shell prompt through a storm of terminal things: globs tumble about
 at random, block cursors blink and hunt you down, and forks split into two
-quick children when you shoot them. They come faster the longer you last.
-Three lives, an extra life and bomb every 25,000 points, and the best score
-kept between games.
+quick children when you shoot them. They come in waves, each bigger and
+faster than the last, announced in big glowing letters; clear the field to
+bring on the next, with a bonus if you kept your ship. Every fifth wave
+from the tenth is a rush. Three lives, an extra life and bomb every 25,000
+points, and the best score kept between games.
 
 ## Controls
 
@@ -29,7 +31,7 @@ press the opposite one. `braillestorm --help` lists every key and option.
 ## Options
 
 - `--demo`: watch the computer play
-- `--time SECS`: start further into the game, where enemies come faster
+- `--wave N`: start at wave N
 - `--fps N`: draw fewer frames a second (the game still runs at 60)
 
 ## Files

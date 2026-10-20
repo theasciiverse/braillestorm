@@ -5,10 +5,10 @@ sub-cells) so the ships, enemies and the warping grid read as glowing vector lin
 Brought to the terminal from Mark Incitti's GridWars (2005 to 2006, BlitzMax),
 itself a free tribute to Bizarre Creations' Geometry Wars (2003 to 2005).
 
-**Status** (2026-10-20): first playable loop. The ship (a shell prompt `❯`
-as a chevron) flies over the warping grid, fires a twin stream and bombs,
-against our first three enemy kinds (below) from a spawner that ramps up;
-three lives, an extra life and bomb every 25,000 points, game over and play
+**Status** (2026-10-20, version 0.2.0): playable in waves. The ship (a
+shell prompt `❯` as a chevron) flies over the warping grid, fires a twin
+stream and bombs, against our first three enemy kinds (below) in numbered
+waves, each announced by a banner of big Braille letters; three lives, an extra life and bomb every 25,000 points, game over and play
 again, pause, high score in `$XDG_DATA_HOME/braillestorm/hiscore`. A demo
 autopilot flies, dodges and shoots. Route decided by David the same day: a
 spiritual successor of our own (below); everything else here is a first
@@ -30,8 +30,10 @@ run here (no rustup for other targets), so macOS and Windows build first
 on GitHub.
 
 The preview (`asciiverse/record-preview.sh`, hub's `castrec.py`): `--demo
---seed 7 --fps 20 --time 18`, 25 s, still at 23 s, best of eight takes. It
-is 25 MB even so: the warping grid changes about half the screen every
+--seed 6 --fps 20 --wave 3`, 27 s with the banners for waves 3, 4 and 5,
+still at 12.2 s (the wave 4 banner), best of eight takes (the demo is
+deterministic per seed, so `--shot 27 --wave 3 --seed N` with
+`RUST_LOG=info` shows where each take's waves begin). It is 20 MB even so: the warping grid changes about half the screen every
 frame and 70% of the bytes are truecolour escapes, so a lower frame rate
 barely helps (36 s at 20 fps was 33 MB, at 30 fps 45 s was 52 MB). The demo
 skips the kitty keyboard query, which otherwise left 2 s of black at the
@@ -40,7 +42,7 @@ start of a recording (a recorder never answers it).
 ```bash
 cargo run --release                          # play (see --help for every key)
 cargo run --release -- --demo                # the autopilot flies
-cargo run --release -- --time 120            # start two minutes into the ramp
+cargo run --release -- --wave 10            # start at wave 10 (the first rush)
 cargo run --release -- --fps 20              # draw less often (the game still runs at 60)
 asciiverse/record-preview.sh                 # re-record the catalog preview
 RUST_LOG=debug cargo run --release 2>braillestorm.log
@@ -67,10 +69,11 @@ blurred dim copy of the light as the cell background for glow),
 `src/grid.rs` (points with springs to their neighbours and back to rest,
 border pinned; blast and pull), `src/fx.rs` (sparks, black holes, bomb
 rings), `src/ship.rs` (ship, shots, bombs, shield after coming back),
-`src/enemies.rs` (the roster, spawner and difficulty ramp), `src/save.rs`
+`src/enemies.rs` (the roster and the waves), `src/text.rs` (our 5x7 pixel
+font drawn as dots, for the banners), `src/save.rs`
 (high score), `src/input.rs` (keys, mouse, gamepad to move/fire/bomb, after
-Panzer's), `src/world.rs` (the field, score, lives, game over, sandbox switches,
-demo autopilot),
+Panzer's), `src/world.rs` (the field, score, lives, wave banners and clear
+bonus, game over, sandbox switches, demo autopilot),
 `src/rng.rs`, `src/main.rs` (the loop at 60 fps, headless `--shot` and
 `--bench`), `tools/shot.py` (cells to PNG, Braille dots drawn as dots).
 
@@ -189,9 +192,10 @@ registrar checked). USPTO and EUIPO not searched.
    with practice targets; feel to be tuned by playing.
 4. Our first three enemy kinds and spawning, then a playable loop with score
    and lives. Done; balance to be tuned by playing.
-5. Next candidates: sound (synthesised), a score multiplier, pick-ups, more
-   enemy kinds (a black-hole enemy using the sandbox hole), the 100x30 preview
-   `.cast` from `--demo`.
+5. Named waves with a banner and a breather between them. Done (0.2.0).
+6. Next candidates: sound (synthesised), a score multiplier, pick-ups, more
+   enemy kinds (a black-hole enemy using the sandbox hole), stages with a
+   grid colour each.
 
 ## Enemies (our own, 2026-10-20)
 
@@ -202,20 +206,42 @@ hurt meanwhile; new ones keep clear of the ship.
 - **Glob** `*` (violet, 25): six-armed asterisk tumbling on a random walk.
   From the start.
 - **Cursor** (cyan, 50): hollow block cursor, twice as tall as wide, its
-  fill blinking; homes in, top speed rising the longer it chases. From 8 s;
-  from 30 s also as a wave out of all four corners (more per corner each
-  minute).
+  fill blinking; homes in, top speed rising the longer it chases. From
+  wave 2; from wave 5 also out of all four corners (more per corner every
+  four waves).
 - **Fork** `Y` (pink, 100): turns slowly toward the ship; shot, it throws
   two **children** (orange diamonds, 25) out either side of the shot's line,
-  fast homers that overshoot. A bomb kills a fork whole. From 25 s.
+  fast homers that overshoot. A bomb kills a fork whole. From wave 4.
 
-Spawner: every `(60 - 0.4 t).max(8) / size` frames, up to `(15 + t/2) *
-size` enemies, where `size` is the field's area against 100x30 (square
-root, 1 to 4); glob packs from 15 s grow each minute; everything moves up to
-1.5 times faster over five minutes. Losing the ship bursts every enemy (no
-points), the ship returns after 100 frames with a 2 s blinking shield.
+## Waves (David's pick, 2026-10-20)
 
-Measured 2026-10-20 (`--bench 36000`, seeds 1 to 3): the autopilot, which
-aims perfectly, reaches game over after about four and a half minutes at
-100x30 (score 135,000 to 147,000); at 240x70 it lasts longer. Frame cost
+Wave N sends `(8 + 5N) * size` enemies (half as many again in a rush), one
+spawn every `(60 - 6N).max(8) / size` frames, at most `(12 + 4N) * size` on
+the field at once, where `size` is the field's area against 100x30 (square
+root, 1 to 4). Glob packs from wave 3, growing every four waves. Everything
+moves 5% faster each wave, up to 1.6 times. Every fifth wave from the 10th
+is a **rush**: half the spawns are cursors out of every corner. Once a wave
+has sent everything, the next starts when the field is clear, or after
+15 s if some are left wandering; then a 2.5 s **breather** with no spawns.
+Clearing a wave without losing the ship pays `100 * N`. Losing the ship
+bursts every enemy (no points); it returns after 100 frames with a 2 s
+blinking shield.
+
+**Banner**, at each wave's start, during the breather: `[WAVE N]` in big
+Braille letters with `spawn: ...`, what is new (`new: fork, splits when
+shot`, `rush: ...`) and the clear bonus under it in smaller ones. Our own
+5x7 font, drawn as light so it glows; no box, the field dimmed softly
+behind it (David: the graphics are too good for a line box, use oversized
+Braille text in a colour contrasting with the game). It types out over
+40 frames with a block cursor, holds, and fades over the last 25 of 150.
+Colour by grid colour (F3): amber on blue, magenta on green, cyan on
+amber, lime on violet. Headline up to six times the font, about a fifth of
+the field's height; details up to three, one size below; lines too wide
+for the window are left out (at 60x20 only the headline).
+
+Measured 2026-10-20 with waves (`--bench 36000`, seeds 1 to 3): the
+autopilot, which aims perfectly, reaches game over at waves 30 to 38 at
+100x30 (5 to 7 minutes, score 122,000 to 197,000, helped by bonus lives);
+at 240x70 it is still alive after ten minutes at wave 31. Before the waves
+the same bot lasted about four and a half minutes at 100x30. Frame cost
 with enemies: update 0.01 ms at 100x30, 0.06 ms at 240x70.

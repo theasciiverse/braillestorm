@@ -4,19 +4,23 @@
 //! autopilot that flies the ship.
 
 use crate::canvas::{Canvas, Rgb};
-use crate::enemies::Enemies;
+use crate::enemies::{self, Enemies, NewWave};
 use crate::fx::Fx;
 use crate::grid::Grid;
 use crate::input::Controls;
 use crate::rng::Rng;
 use crate::save;
 use crate::ship::{self, Ship};
+use crate::text;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 
 /// Grid colours: blue, Asciiverse green, amber, violet.
 pub const GRID_COLOURS: [(&str, Rgb); 4] = [("blue", [0.07, 0.10, 0.32]), ("green", [0.04, 0.28, 0.10]), ("amber", [0.30, 0.17, 0.03]), ("violet", [0.21, 0.06, 0.30])];
+/// Banner text for each grid colour, picked to stand out from it: amber
+/// on blue, magenta on green, cyan on amber, lime on violet.
+const BANNER_COLOURS: [Rgb; 4] = [[1.4, 0.85, 0.2], [1.3, 0.3, 1.1], [0.3, 1.0, 1.4], [0.7, 1.4, 0.3]];
 /// Random blast hues.
 const HUES: [Rgb; 6] = [[1.0, 0.45, 0.1], [0.2, 0.9, 1.0], [1.0, 0.25, 0.7], [0.4, 1.0, 0.3], [1.0, 0.9, 0.2], [0.6, 0.4, 1.0]];
 const BOMB_RADIUS: f32 = 200.0;
@@ -29,6 +33,18 @@ const LOST: u32 = 100;
 /// starts again by itself after `DEMO_AGAIN`.
 const OVER_WAIT: u32 = 60;
 const DEMO_AGAIN: u32 = 240;
+/// The wave banner: frames it types out over, then holds, then fades.
+const BANNER_TYPE: u32 = 40;
+const BANNER_FADE: u32 = 25;
+const BANNER_LIFE: u32 = enemies::BREATHER;
+/// Points per wave number for clearing a wave without losing the ship.
+const CLEAR_BONUS: u64 = 100;
+
+/// The text block shown over the field as a wave begins.
+struct Banner {
+    lines: Vec<String>,
+    age: u32,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
@@ -48,6 +64,11 @@ pub struct World {
     pub rng: Rng,
     pub ship: Ship,
     pub enemies: Enemies,
+    /// The wave a new game starts at (`--wave`).
+    pub start_wave: u32,
+    banner: Option<Banner>,
+    /// The ship was lost during this wave, so clearing it earns nothing.
+    lost_in_wave: bool,
     pub phase: Phase,
     pub paused: bool,
     pub score: u64,
@@ -86,6 +107,9 @@ impl World {
             rng: Rng::new(seed),
             ship,
             enemies: Enemies::default(),
+            start_wave: 1,
+            banner: None,
+            lost_in_wave: false,
             phase: Phase::Play,
             paused: false,
             score: 0,
@@ -112,6 +136,9 @@ impl World {
         self.ship = Ship::new(w / 2.0, h / 2.0);
         self.ship.shield = ship::SHIELD;
         self.enemies = Enemies::default();
+        self.enemies.start_at(self.start_wave);
+        self.banner = None;
+        self.lost_in_wave = false;
         self.phase = Phase::Play;
         self.paused = false;
         self.score = 0;
@@ -217,7 +244,9 @@ impl World {
         }
         match self.phase {
             Phase::Play => {
-                self.enemies.spawn(&mut self.rng, w, h, (self.ship.x, self.ship.y));
+                if let Some(nw) = self.enemies.spawn(&mut self.rng, w, h, (self.ship.x, self.ship.y)) {
+                    self.new_wave(nw);
+                }
                 if let Some((x, y)) = self.ship.update(c, &mut self.grid, &mut self.fx, &mut self.rng, w, h) {
                     let p = self.enemies.clear_around(x, y, BOMB_RADIUS, &mut self.grid, &mut self.fx, &mut self.rng);
                     self.add_score(p);
@@ -252,8 +281,31 @@ impl World {
                 }
             }
         }
+        if let Some(b) = &mut self.banner {
+            b.age += 1;
+            if b.age >= BANNER_LIFE {
+                self.banner = None;
+            }
+        }
         self.fx.update(&mut self.grid, &mut self.rng, w, h);
         self.grid.update();
+    }
+
+    /// A wave begins: the clear bonus for the last one, and its banner.
+    fn new_wave(&mut self, nw: NewWave) {
+        let mut lines = vec![format!("[wave {}]", nw.wave)];
+        let (spawn, new) = enemies::wave_notes(nw.wave);
+        lines.push(spawn);
+        lines.extend(new.map(String::from));
+        // the first wave of a game has nothing before it to have cleared
+        if nw.wave > self.start_wave && nw.cleared && !self.lost_in_wave {
+            let bonus = CLEAR_BONUS * (nw.wave - 1) as u64;
+            self.add_score(bonus);
+            lines.push(format!("wave {} cleared  +{}", nw.wave - 1, thousands(bonus)));
+        }
+        log::info!("wave {} begins at frame {}: {lines:?}", nw.wave, self.frames);
+        self.lost_in_wave = false;
+        self.banner = Some(Banner { lines, age: 0 });
     }
 
     fn add_score(&mut self, p: u64) {
@@ -270,6 +322,7 @@ impl World {
         let (x, y) = (self.ship.x, self.ship.y);
         log::info!("ship lost to {by:?} at ({x:.0}, {y:.0}), score {}, {} lives left", self.score, self.lives - 1);
         self.lives -= 1;
+        self.lost_in_wave = true;
         self.fx.blast(&mut self.grid, &mut self.rng, x, y, [0.75, 1.3, 0.85], 300);
         self.fx.ring(x, y);
         self.grid.blast(x, y, 14.0, 260.0);
@@ -280,6 +333,7 @@ impl World {
 
     fn game_over(&mut self) {
         self.phase = Phase::Over(0);
+        self.banner = None;
         let counts = !self.tainted;
         if counts && self.score > self.hi {
             self.hi = self.score;
@@ -297,10 +351,11 @@ impl World {
         self.enemies.draw(&mut self.canvas);
         self.fx.draw(&mut self.canvas);
         self.ship.draw(&mut self.canvas, self.phase != Phase::Play);
+        self.draw_banner();
         self.canvas.resolve(buf, self.area, self.glow);
         if self.hud && screen.height > 0 {
             let hi = self.hi.max(if self.tainted { 0 } else { self.score });
-            let line = format!(" braillestorm  score {}  hi {}  lives {}  bombs {}  {status}", thousands(self.score), thousands(hi), self.lives, self.ship.bombs);
+            let line = format!(" braillestorm  wave {}  score {}  hi {}  lives {}  bombs {}  {status}", self.enemies.wave.max(1), thousands(self.score), thousands(hi), self.lives, self.ship.bombs);
             let style = Style::new().fg(Color::Rgb(0x6a, 0xd0, 0x6a)).bg(Color::Rgb(0, 0, 0));
             buf.set_stringn(screen.x, screen.y, format!("{line:<w$}", w = screen.width as usize), screen.width as usize, style);
         }
@@ -330,9 +385,60 @@ impl World {
         }
     }
 
+    /// The wave banner: the wave in big Braille letters with the details
+    /// in small ones under it, typed out, held, then faded, over a soft
+    /// darkening of the field, in the colour that stands out from the grid.
+    fn draw_banner(&mut self) {
+        let Some(b) = &self.banner else { return };
+        let (w, h) = self.dims();
+        let fade = if b.age + BANNER_FADE > BANNER_LIFE { (BANNER_LIFE - b.age) as f32 / BANNER_FADE as f32 } else { 1.0 };
+        let room = w * 0.9;
+        let head = &b.lines[0];
+        // as big as the window allows, the headline about a fifth of its height
+        let big = text::fit(head, room, ((h / 35.0) as usize).clamp(1, 6));
+        // detail lines too wide for even the smallest letters are left out
+        let lines: Vec<&String> = b.lines.iter().enumerate().filter(|&(i, l)| i == 0 || text::fit(l, room, 1) > 0).map(|(_, l)| l).collect();
+        let rest = &lines[1..];
+        let small = rest.iter().map(|l| text::fit(l, room, 3)).min().unwrap_or(1).min(big.saturating_sub(1).max(1));
+        if big == 0 {
+            return;
+        }
+        let gap = text::height(small) * 0.5;
+        let total = text::height(big) + rest.len() as f32 * (text::height(small) + gap) + gap;
+        let top = ((h - total) / 3.0).max(2.0);
+        let widest = lines.iter().enumerate().map(|(i, l)| text::width(l, if i == 0 { big } else { small })).fold(0.0, f32::max);
+        let left = (w - widest) / 2.0;
+        self.canvas.dim(left - 4.0, top - 4.0, left + widest + 4.0, top + total + 2.0, 1.0 - 0.95 * fade, 10.0);
+        // typed out line after line, a few characters a frame, with a cursor
+        let all: usize = lines.iter().map(|l| l.chars().count()).sum();
+        let mut shown = (b.age as usize * all / BANNER_TYPE as usize).max(1);
+        let hue = BANNER_COLOURS[self.colour];
+        let mut y = top;
+        for (i, l) in lines.iter().enumerate() {
+            let scale = if i == 0 { big } else { small };
+            let n = l.chars().count().min(shown);
+            shown -= n;
+            let mut part: String = l.chars().take(n).collect();
+            if n < l.chars().count() && b.age < BANNER_TYPE {
+                part.push('\u{2588}');
+            }
+            // the headline full strength, the details a little softer
+            let k = fade * if i == 0 { 1.0 } else { 0.75 };
+            let x = (w - text::width(l, scale)) / 2.0;
+            text::draw(&mut self.canvas, x, y, scale, &part, [hue[0] * k, hue[1] * k, hue[2] * k]);
+            y += text::height(scale) + gap;
+            if i == 0 {
+                y += gap;
+            }
+            if shown == 0 && n < l.chars().count() {
+                break;
+            }
+        }
+    }
+
     pub fn snapshot(&self, fps: f32, c: &Controls) {
         log::debug!(
-            "snapshot frame {} fps {fps:.1} phase {:?} paused {} score {} lives {} ship ({:.0}, {:.0}) shield {} controls {:?} shots {} bombs {} enemies {} clock {} sparks {} holes {} energy {:.0} demo {}",
+            "snapshot frame {} fps {fps:.1} phase {:?} paused {} score {} lives {} ship ({:.0}, {:.0}) shield {} controls {:?} shots {} bombs {} enemies {} wave {} breather {} sparks {} holes {} energy {:.0} demo {}",
             self.frames,
             self.phase,
             self.paused,
@@ -345,7 +451,8 @@ impl World {
             self.ship.shots.len(),
             self.ship.bombs,
             self.enemies.list.len(),
-            self.enemies.clock,
+            self.enemies.wave,
+            self.enemies.breather,
             self.fx.sparks.len(),
             self.fx.holes.len(),
             self.grid.energy(),

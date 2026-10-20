@@ -14,6 +14,7 @@ mod input;
 mod rng;
 mod save;
 mod ship;
+mod text;
 mod world;
 
 use input::{Cmd, Controls, Input};
@@ -30,10 +31,11 @@ use world::{World, GRID_COLOURS};
 const FRAME: Duration = Duration::from_micros(16_667);
 const SNAPSHOT_EVERY: Duration = Duration::from_millis(500);
 
-const HELP: &str = "braillestorm [--demo] [--seed N] [--spacing N] [--fps N] [--time SECS]
+const HELP: &str = "braillestorm [--demo] [--seed N] [--spacing N] [--fps N] [--wave N]
 
-Twin-stick shooting over a warping grid, in Braille. Three lives; an extra
-life and bomb every 25,000 points.
+Twin-stick shooting over a warping grid, in Braille, in waves that grow:
+clear the field to bring on the next, with a bonus if you kept your ship.
+Three lives; an extra life and bomb every 25,000 points.
 
   WASD            move             (or the left stick)
   arrow keys      fire             (or hold the left mouse button to fire
@@ -52,9 +54,9 @@ Alacritty, iTerm2 and others report key releases) WASD stutters for a
 moment after the first press, and arrows fire sticky: the last arrow keeps
 firing until its opposite is pressed. The mouse and a gamepad work anywhere.
 
-  --time SECS                          start that far into the game (enemies come faster)
+  --wave N                             start at wave N
   --fps N                              draw N frames a second (60; 30 or 20 for smaller preview casts)
-  --shot SECS [--size WxH] [--cells]   play headless on the autopilot, print the screen
+  --shot SECS [--size WxH] [--wave N] [--cells]   play headless on the autopilot, print the screen
   --bench FRAMES [--size WxH]          time frames without a terminal
 
 Session log: RUST_LOG=debug braillestorm 2>braillestorm.log";
@@ -75,8 +77,9 @@ fn main() -> io::Result<()> {
         let (w, h) = v.split_once('x')?;
         Some((w.parse::<u16>().ok()?.clamp(10, 1000), h.parse::<u16>().ok()?.clamp(5, 500)))
     });
+    let wave = arg("--wave").and_then(|v| v.parse::<u32>().ok()).unwrap_or(1).clamp(1, 999);
     if let Some(secs) = arg("--shot") {
-        shot(secs.parse().unwrap_or(3.0), size.unwrap_or((100, 30)), seed, spacing, args.iter().any(|a| a == "--cells"));
+        shot(secs.parse().unwrap_or(3.0), size.unwrap_or((100, 30)), seed, spacing, wave, args.iter().any(|a| a == "--cells"));
         return Ok(());
     }
     if let Some(frames) = arg("--bench") {
@@ -103,10 +106,8 @@ fn main() -> io::Result<()> {
     world.demo = demo;
     world.keep_hi = true;
     world.hi = save::load_hi();
+    world.start_wave = wave;
     world.restart();
-    if let Some(t) = arg("--time").and_then(|v| v.parse::<f32>().ok()) {
-        world.enemies.clock = (t.clamp(0.0, 3600.0) * 60.0) as u32;
-    }
     let fps = arg("--fps").and_then(|v| v.parse::<u32>().ok()).unwrap_or(60);
     let result = run(&mut terminal, &mut world, &mut input, fps);
     let _ = execute!(io::stdout(), DisableMouseCapture, DisableFocusChange);
@@ -236,9 +237,11 @@ fn run(terminal: &mut ratatui::DefaultTerminal, world: &mut World, input: &mut I
 /// Play `secs` seconds on the autopilot without a terminal and print the
 /// screen. With `cells`, one line per cell instead: `x y fg bg symbol`,
 /// colours as hex, for `tools/shot.py` to draw as an image.
-fn shot(secs: f32, (w, h): (u16, u16), seed: u64, spacing: f32, cells: bool) {
+fn shot(secs: f32, (w, h): (u16, u16), seed: u64, spacing: f32, wave: u32, cells: bool) {
     let screen = Rect::new(0, 0, w, h);
     let mut world = World::new(screen, seed, spacing);
+    world.start_wave = wave;
+    world.restart();
     for _ in 0..(secs * 60.0) as u32 {
         let c = world.demo_controls();
         world.update(c);

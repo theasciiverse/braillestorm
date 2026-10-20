@@ -76,35 +76,106 @@ impl Enemy {
     }
 }
 
+/// Frames between waves, with nothing spawning.
+pub const BREATHER: u32 = 150;
+/// Frames a wave may linger once everything is out before the next comes
+/// anyway (a glob can wander a long way from the guns).
+const LINGER: u32 = 15 * 60;
+
+/// A wave has begun: its number, and whether the one before it ended with
+/// the field cleared (rather than by running out of time).
+pub struct NewWave {
+    pub wave: u32,
+    pub cleared: bool,
+}
+
 #[derive(Default)]
 pub struct Enemies {
     pub list: Vec<Enemy>,
-    /// Frames of play this game, which sets how hard the spawner pushes.
-    pub clock: u32,
+    /// The current wave, from 1; 0 before the first.
+    pub wave: u32,
+    /// Enemies this wave still has to send.
+    budget: u32,
+    /// Frames since the wave sent its last enemy.
+    since: u32,
+    /// Frames of quiet left before the wave starts sending.
+    pub breather: u32,
     wait: u32,
 }
 
+/// Which kinds a wave sends, and what is new in it, for its banner.
+pub fn wave_notes(wave: u32) -> (String, Option<&'static str>) {
+    let mut kinds = vec!["glob"];
+    if wave >= 2 {
+        kinds.push("cursor");
+    }
+    if wave >= 4 {
+        kinds.push("fork");
+    }
+    let new = match wave {
+        2 => Some("new: cursor, it hunts you"),
+        3 => Some("new: globs in packs"),
+        4 => Some("new: fork, splits when shot"),
+        5 => Some("new: cursors from the corners"),
+        _ if rush(wave) => Some("rush: cursors from every corner"),
+        _ => None,
+    };
+    (format!("spawn: {}", kinds.join(" ")), new)
+}
+
+/// Every fifth wave from the tenth is a rush of corner cursors.
+fn rush(wave: u32) -> bool {
+    wave >= 10 && wave % 5 == 0
+}
+
 impl Enemies {
-    /// Spawn when it is time; `ship` is kept clear of new arrivals.
-    pub fn spawn(&mut self, rng: &mut Rng, w: f32, h: f32, ship: (f32, f32)) {
-        self.clock += 1;
-        if self.wait > 0 {
-            self.wait -= 1;
-            return;
+    /// Start the next game at `wave` instead of the first.
+    pub fn start_at(&mut self, wave: u32) {
+        self.wave = wave.saturating_sub(1);
+    }
+
+    /// Run the waves: send enemies while the wave has some to send, then,
+    /// once the field is clear (or it has lingered too long), take a
+    /// breather and start the next. `ship` is kept clear of new arrivals.
+    pub fn spawn(&mut self, rng: &mut Rng, w: f32, h: f32, ship: (f32, f32)) -> Option<NewWave> {
+        if self.breather > 0 {
+            self.breather -= 1;
+            return None;
         }
-        let t = self.clock as f32 / 60.0;
         // a 100x30 terminal is 1; a big field gets more enemies, sooner
         let size = (w * h / (200.0 * 116.0)).sqrt().clamp(1.0, 4.0);
-        let cap = ((15.0 + t / 2.0) * size).min(250.0) as usize;
-        self.wait = ((60.0 - t * 0.4).max(8.0) / size) as u32;
-        // packs and waves grow over the first few minutes
-        let more = (t / 60.0) as u64;
-        if self.list.len() >= cap {
-            return;
+        if self.budget == 0 {
+            self.since += 1;
+            let cleared = self.list.is_empty();
+            if !cleared && self.since < LINGER {
+                return None;
+            }
+            self.wave += 1;
+            let n = (8.0 + self.wave as f32 * 5.0) * size * if rush(self.wave) { 1.5 } else { 1.0 };
+            self.budget = n as u32;
+            self.since = 0;
+            self.breather = BREATHER;
+            self.wait = 0;
+            log::info!("wave {} ({} enemies), last one {}", self.wave, self.budget, if cleared { "cleared" } else { "timed out" });
+            return Some(NewWave { wave: self.wave, cleared });
         }
+        if self.wait > 0 {
+            self.wait -= 1;
+            return None;
+        }
+        let wave = self.wave;
+        let cap = ((12.0 + wave as f32 * 4.0) * size).min(250.0) as usize;
+        self.wait = ((60.0 - wave as f32 * 6.0).max(8.0) / size) as u32;
+        // packs and corner waves grow every few waves
+        let more = (wave / 4) as u64;
+        if self.list.len() >= cap {
+            return None;
+        }
+        let before = self.list.len();
         let roll = rng.f32();
+        let corners = if rush(wave) { 0.5 } else if wave >= 5 { 0.12 } else { 0.0 };
         match () {
-            _ if t >= 30.0 && roll < 0.12 => {
+            _ if roll < corners => {
                 // a cursor out of each corner
                 for (cx, cy) in [(0.08, 0.1), (0.92, 0.1), (0.08, 0.9), (0.92, 0.9)] {
                     for i in 0..1 + more.min(3) {
@@ -112,7 +183,7 @@ impl Enemies {
                     }
                 }
             }
-            _ if t >= 15.0 && roll < 0.3 => {
+            _ if wave >= 3 && roll < corners + 0.18 => {
                 // a pack of globs together, away from the ship
                 if let Some((x, y)) = place(rng, w, h, ship) {
                     for _ in 0..4 + more.min(8) + rng.next() % 5 {
@@ -122,9 +193,9 @@ impl Enemies {
                 }
             }
             _ => {
-                let kind = if t >= 25.0 && roll < 0.5 {
+                let kind = if wave >= 4 && roll < 0.5 {
                     Kind::Fork
-                } else if t >= 8.0 && roll < 0.75 {
+                } else if wave >= 2 && roll < 0.75 {
                     Kind::Cursor
                 } else {
                     Kind::Glob
@@ -134,6 +205,8 @@ impl Enemies {
                 }
             }
         }
+        self.budget = self.budget.saturating_sub((self.list.len() - before) as u32);
+        None
     }
 
     fn add(&mut self, kind: Kind, x: f32, y: f32, rng: &mut Rng) {
@@ -143,8 +216,8 @@ impl Enemies {
     /// Move everything one frame; `ship` is where they chase, if the ship
     /// is there to chase.
     pub fn update(&mut self, rng: &mut Rng, w: f32, h: f32, ship: Option<(f32, f32)>) {
-        // everything gets quicker over five minutes, up to half as fast again
-        let heat = 1.0 + (self.clock as f32 / (60.0 * 300.0) * 0.5).min(0.5);
+        // everything gets quicker wave by wave, up to 1.6 times as fast
+        let heat = 1.0 + (self.wave.saturating_sub(1) as f32 * 0.05).min(0.6);
         for e in &mut self.list {
             e.age += 1;
             if !e.solid() {
@@ -277,7 +350,6 @@ impl Enemies {
         for e in std::mem::take(&mut self.list) {
             self.burst(&e, grid, fx, rng, 15);
         }
-        self.wait = 0;
     }
 
     fn burst(&self, e: &Enemy, grid: &mut Grid, fx: &mut Fx, rng: &mut Rng, sparks: usize) {
@@ -371,7 +443,8 @@ mod tests {
     fn spawns_clear_of_the_ship() {
         let mut rng = Rng::new(7);
         let mut en = Enemies::default();
-        for _ in 0..60 * 60 {
+        en.start_at(6);
+        for _ in 0..60 * 20 {
             en.spawn(&mut rng, 200.0, 116.0, (100.0, 58.0));
         }
         assert!(!en.list.is_empty());
@@ -379,6 +452,38 @@ mod tests {
         for e in en.list.iter().filter(|e| e.kind != Kind::Cursor) {
             assert!((e.x - 100.0).hypot(e.y - 58.0) >= 52.0 - 18.0, "{:?} at {}, {}", e.kind, e.x, e.y);
         }
+    }
+
+    #[test]
+    fn waves_follow_a_cleared_field() {
+        let mut rng = Rng::new(5);
+        let mut en = Enemies::default();
+        let first = en.spawn(&mut rng, 200.0, 116.0, (100.0, 58.0)).expect("wave 1 starts at once");
+        assert_eq!(first.wave, 1);
+        let mut started = Vec::new();
+        for _ in 0..60 * 120 {
+            if let Some(w) = en.spawn(&mut rng, 200.0, 116.0, (100.0, 58.0)) {
+                started.push((w.wave, w.cleared));
+            }
+            // everything shot the moment it is out
+            en.list.clear();
+        }
+        assert!(started.len() >= 3, "{started:?}");
+        assert!(started.iter().all(|&(_, cleared)| cleared));
+        assert_eq!(started[0].0, 2);
+    }
+
+    #[test]
+    fn a_lingering_wave_moves_on() {
+        let mut rng = Rng::new(5);
+        let mut en = Enemies::default();
+        let mut started = Vec::new();
+        for _ in 0..60 * 60 {
+            if let Some(w) = en.spawn(&mut rng, 200.0, 116.0, (100.0, 58.0)) {
+                started.push((w.wave, w.cleared));
+            }
+        }
+        assert!(started.iter().any(|&(w, cleared)| w == 2 && !cleared), "{started:?}");
     }
 
     #[test]
