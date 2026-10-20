@@ -227,11 +227,13 @@ Clearing a wave without losing the ship pays `100 * N`. Losing the ship
 bursts every enemy (no points); it returns after 100 frames with a 2 s
 blinking shield.
 
-**Banner**, at each wave's start, during the breather: `[WAVE N]` in big
+**Banner**, at each wave's start, during the breather: `WAVE N` in big
 Braille letters and, under it at half the size, only `rush!` on a rush
 wave and the clear bonus (`+300`) (David: little text, so it does not take
 the eye off the action; no "new: fork" notes, the enemies explain
-themselves, while a rush warning changes what to do next). Our own
+themselves, while a rush warning changes what to do next). No brackets
+round the headline either: blown up in pixel letters a lone `]` read as a
+stray shape (David, 2026-10-20). Our own
 5x7 font, drawn as light so it glows; no box and no dark backdrop (David:
 the graphics are too good for a line box, use oversized Braille text in a
 colour contrasting with the game, and keep the play area visible under

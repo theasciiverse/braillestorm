@@ -118,8 +118,8 @@ mod tests {
     fn widths_and_fitting() {
         assert_eq!(width("A", 1), 5.0);
         assert_eq!(width("AB", 2), 22.0);
-        assert_eq!(fit("[WAVE 7]", 200.0, 3), 3);
-        assert_eq!(fit("[WAVE 7]", 60.0, 3), 1);
-        assert_eq!(fit("[WAVE 7]", 10.0, 3), 0);
+        assert_eq!(fit("WAVE 7", 200.0, 3), 3);
+        assert_eq!(fit("WAVE 7", 60.0, 3), 1);
+        assert_eq!(fit("WAVE 7", 10.0, 3), 0);
     }
 }

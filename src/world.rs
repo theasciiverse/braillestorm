@@ -293,7 +293,7 @@ impl World {
 
     /// A wave begins: the clear bonus for the last one, and its banner.
     fn new_wave(&mut self, nw: NewWave) {
-        let mut lines = vec![format!("[wave {}]", nw.wave)];
+        let mut lines = vec![format!("wave {}", nw.wave)];
         // a glance, not a read: the wave, a rush warning, the bonus
         lines.extend(enemies::wave_note(nw.wave).map(String::from));
         // the first wave of a game has nothing before it to have cleared
