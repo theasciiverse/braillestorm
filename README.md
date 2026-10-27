@@ -1,17 +1,18 @@
 # Braillestorm
 
-A twin-stick arena shooter for the terminal, drawn in Braille dots as thin
-glowing lines over a grid that dents, ripples and rings with every shot,
-burst and bomb. An original Asciiverse game, inspired by Mark Incitti's
-freeware GridWars (2005); no code, art or sound is taken from it.
+**YOU ARE THE LAST PROMPT STANDING.**
 
-Fly a shell prompt through a storm of terminal things: globs tumble about
-at random, block cursors blink and hunt you down, and forks split into two
-quick children when you shoot them. They come in waves, each bigger and
-faster than the last, announced in big glowing letters; clear the field to
-bring on the next, with a bonus if you kept your ship. Every fifth wave
-from the tenth is a rush. Three lives, an extra life and bomb every 25,000
-points, and the best score kept between games.
+Something has gone badly wrong in your terminal: globs tumble loose, block
+cursors blink awake and hunt you down, and forks split into two quick children
+when you shoot them. You're a lone shell prompt with a twin stream of fire and
+three bombs, in a twin-stick arena shooter drawn in Braille dots as thin
+glowing lines, over a grid that dents, ripples and rings with every shot,
+burst and bomb. Waves never stop, each bigger and faster than the last, and
+from the tenth every fifth wave is a rush. How long can you hold back the
+storm?
+
+Inspired by Mark Incitti's freeware GridWars (2005); no code, art or sound is
+taken from it.
 
 ## Play
 
