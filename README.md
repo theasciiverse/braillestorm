@@ -13,6 +13,20 @@ bring on the next, with a bonus if you kept your ship. Every fifth wave
 from the tenth is a rush. Three lives, an extra life and bomb every 25,000
 points, and the best score kept between games.
 
+## Play
+
+With [av](https://asciiverse.sh), the Asciiverse client:
+
+```
+av install braillestorm
+av play braillestorm
+```
+
+Or download the archive for your system from this repository's Releases,
+unpack it and run `./braillestorm` (`braillestorm.exe` on Windows).
+
+To build it yourself: `cargo run --release`.
+
 ## Controls
 
 - **WASD**: move
