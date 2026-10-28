@@ -32,8 +32,12 @@ To build it yourself: `cargo run --release`.
 - **Space** or **right click**: bomb
 - **P** or **Enter**: pause; **Space** or **Enter**: play again after game over
 - **Q** or **Esc**: quit
-- **Gamepad**: left stick to move, right stick to fire, A or a shoulder
-  button to bomb, Start to pause, Back to quit
+- **B**: a black hole on or off (it drifts, drinks the sparks and sucks the
+  grid down), **H**: hide the top line
+- **F2**: glow, **F3**: grid colour, **F4** / **F5**: grid denser or
+  sparser, **F6**: random blasts, **F7**: autopilot
+- **Gamepad**: left stick to move, right stick to fire, A, a shoulder button
+  or a trigger to bomb, Start to pause, Back to quit
 
 Best in a terminal that reports key releases (kitty, foot, WezTerm,
 Ghostty, Alacritty, iTerm2 and others), or with a gamepad or the mouse.
