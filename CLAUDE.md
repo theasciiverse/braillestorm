@@ -25,7 +25,7 @@ Wars' pattern): glibc Linux on Ubuntu 22.04 (x86_64, aarch64; libudev
 linked dynamically, the manifest's system_deps), macOS and Windows (MSVC),
 x86_64 and ARM64 each; archives `braillestorm-<target>` with the stripped
 binary, README.md and LICENSE, plus SHA256SUMS.
-Tags `v<version>-av.<n>`, first `v0.1.0-av.1`. Only the Linux steps were
+Tags `v<version>`, now `v0.2.0` (2026-10-28). Only the Linux steps were
 run here (no rustup for other targets), so macOS and Windows build first
 on GitHub.
 
