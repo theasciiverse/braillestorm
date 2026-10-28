@@ -68,4 +68,7 @@ On Linux, gamepads need libudev1.
 cargo build --release
 ```
 
-Licence not chosen yet.
+## Licence
+
+GNU General Public License, version 3 or (at your option) any later
+version; see [LICENSE](LICENSE).

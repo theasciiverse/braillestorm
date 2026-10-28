@@ -7,8 +7,8 @@
 # are glibc, not static musl: gamepads go through gilrs and udev, linked
 # dynamically, so the binary needs libudev1 (the manifest's system_deps).
 # They are built on Ubuntu 22.04, so they run on glibc 2.35 and newer.
-# macOS and Windows use their own gamepad APIs. No LICENSE in the archives
-# yet: the licence is not chosen.
+# macOS and Windows use their own gamepad APIs. The archives carry
+# README.md and LICENSE.
 
 name: release
 
@@ -62,7 +62,7 @@ jobs:
         run: |
           # the binary sits at the top of the archive, where av looks for it
           mkdir -p stage dist
-          cp target/release/$BIN README.md stage/
+          cp target/release/$BIN README.md LICENSE stage/
           tar -czf "dist/$ID-${{ matrix.target }}.tar.gz" -C stage .
 
       - uses: actions/upload-artifact@v4
@@ -94,7 +94,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p stage dist
-          cp target/${{ matrix.target }}/release/$BIN README.md stage/
+          cp target/${{ matrix.target }}/release/$BIN README.md LICENSE stage/
           tar -czf "dist/$ID-${{ matrix.target }}.tar.gz" -C stage .
 
       - uses: actions/upload-artifact@v4
@@ -124,7 +124,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p stage dist
-          cp target/${{ matrix.target }}/release/$BIN.exe README.md stage/
+          cp target/${{ matrix.target }}/release/$BIN.exe README.md LICENSE stage/
           (cd stage && 7z a -tzip "../dist/$ID-${{ matrix.target }}.zip" .)
 
       - uses: actions/upload-artifact@v4
