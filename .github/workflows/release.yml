@@ -3,7 +3,7 @@
 # SHA256SUMS file, attached to a GitHub release (hub/catalog/SCHEMA.md,
 # release.source = "github").
 #
-# On the pattern of ASCII Wars'. Tags look like v0.1.0-av.1. Linux builds
+# On the pattern of ASCII Wars'. Tags look like v0.1.0. Linux builds
 # are glibc, not static musl: gamepads go through gilrs and udev, linked
 # dynamically, so the binary needs libudev1 (the manifest's system_deps).
 # They are built on Ubuntu 22.04, so they run on glibc 2.35 and newer.
@@ -14,7 +14,7 @@ name: release
 
 on:
   push:
-    tags: ["*-av.*"]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
