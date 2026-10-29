@@ -9,6 +9,7 @@ use crate::canvas::{Canvas, Rgb};
 use crate::fx::Fx;
 use crate::grid::Grid;
 use crate::input::Controls;
+use crate::pickups::Power;
 use crate::rng::Rng;
 
 /// Acceleration per frame at full stick, and velocity kept per frame: top
@@ -16,8 +17,14 @@ use crate::rng::Rng;
 const ACCEL: f32 = 0.38;
 const DRAG: f32 = 0.85;
 const SHOT_SPEED: f32 = 6.0;
-/// Frames between volleys.
+/// Frames between volleys, and with the rapid pick-up.
 const COOLDOWN: u32 = 5;
+const COOLDOWN_RAPID: u32 = 3;
+/// Frames the wide and rapid pick-ups last, and the shield one.
+pub const POWER_TIME: u32 = 6 * 60;
+const SHIELD_TIME: u32 = 3 * 60;
+/// The wide pick-up's outer streams, this far off the aim (radians).
+const WIDE: f32 = 0.2;
 const SHOT_LIFE: u32 = 240;
 pub const BOMBS: u32 = 3;
 const SHIP: Rgb = [0.75, 1.3, 0.85];
@@ -59,18 +66,35 @@ pub struct Ship {
     pub shield: u32,
     /// A volley went out this frame.
     pub fired: bool,
+    /// Frames left of the wide and the rapid pick-ups.
+    pub wide: u32,
+    pub rapid: u32,
+    /// A pick-up ran out this frame.
+    pub expired: bool,
 }
 
 impl Ship {
     pub fn new(x: f32, y: f32) -> Ship {
-        Ship { x, y, vx: 0.0, vy: 0.0, angle: -std::f32::consts::FRAC_PI_2, cooldown: 0, volley: 0, bombs: BOMBS, shots: Vec::new(), shield: 0, fired: false }
+        Ship { x, y, vx: 0.0, vy: 0.0, angle: -std::f32::consts::FRAC_PI_2, cooldown: 0, volley: 0, bombs: BOMBS, shots: Vec::new(), shield: 0, fired: false, wide: 0, rapid: 0, expired: false }
     }
 
-    /// Back on the field after being lost: still, shielded, no shots out.
+    /// Back on the field after being lost: still, shielded, no shots out,
+    /// and no pick-ups left running.
     pub fn respawn(&mut self) {
         (self.vx, self.vy) = (0.0, 0.0);
         self.shots.clear();
         self.shield = SHIELD;
+        (self.wide, self.rapid) = (0, 0);
+    }
+
+    /// A pick-up taken.
+    pub fn power_up(&mut self, p: Power) {
+        match p {
+            Power::Wide => self.wide = POWER_TIME,
+            Power::Rapid => self.rapid = POWER_TIME,
+            Power::Shield => self.shield = self.shield.max(SHIELD_TIME),
+            Power::Bomb => self.bombs += 1,
+        }
     }
 
     /// A push from outside (a null's pull), added to the velocity.
@@ -82,6 +106,9 @@ impl Ship {
     /// One frame. Returns where a bomb went off, if one did.
     pub fn update(&mut self, c: Controls, grid: &mut Grid, fx: &mut Fx, rng: &mut Rng, w: f32, h: f32) -> Option<(f32, f32)> {
         self.shield = self.shield.saturating_sub(1);
+        self.expired = self.wide == 1 || self.rapid == 1;
+        self.wide = self.wide.saturating_sub(1);
+        self.rapid = self.rapid.saturating_sub(1);
         self.vx = (self.vx + c.mv.0 * ACCEL) * DRAG;
         self.vy = (self.vy + c.mv.1 * ACCEL) * DRAG;
         let margin = 4.0;
@@ -112,7 +139,7 @@ impl Ship {
         self.fired = false;
         if let Some(a) = c.fire {
             if self.cooldown == 0 {
-                self.cooldown = COOLDOWN;
+                self.cooldown = if self.rapid > 0 { COOLDOWN_RAPID } else { COOLDOWN };
                 self.fired = true;
                 self.volley += 1;
                 let (ca, sa) = (a.cos(), a.sin());
@@ -121,6 +148,10 @@ impl Ship {
                     let (ox, oy) = (-sa * side * 1.5, ca * side * 1.5);
                     let b = a + wobble * side;
                     self.shots.push(Shot { x: self.x + ox + ca * 3.0, y: self.y + oy + sa * 3.0, vx: b.cos() * SHOT_SPEED, vy: b.sin() * SHOT_SPEED, age: 0 });
+                    if self.wide > 0 {
+                        let b = a + WIDE * side;
+                        self.shots.push(Shot { x: self.x + ox, y: self.y + oy, vx: b.cos() * SHOT_SPEED, vy: b.sin() * SHOT_SPEED, age: 0 });
+                    }
                 }
             }
         }

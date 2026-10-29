@@ -1,6 +1,6 @@
 //! The play field and the game on it: canvas, grid, effects, the ship and
-//! the enemies, score and multiplier, lives and game over, and the sounds
-//! it all asks for; plus the sandbox switches from
+//! the enemies, pick-ups, score and multiplier, lives and game over,
+//! stages that change the grid's colour, and the sounds it all asks for; plus the sandbox switches from
 //! the grid test (glow, grid colour and spacing, random blasts) and a demo
 //! autopilot that flies the ship.
 
@@ -10,6 +10,7 @@ use crate::enemies::{self, Enemies, Kind, NewWave};
 use crate::fx::Fx;
 use crate::grid::Grid;
 use crate::input::Controls;
+use crate::pickups::Pickups;
 use crate::rng::Rng;
 use crate::save;
 use crate::ship::{self, Ship};
@@ -48,6 +49,8 @@ const MULT_STEP: u32 = 25;
 const MULT_MAX: u32 = 10;
 /// How hard a null bends shots compared with the ship.
 const SHOT_PULL: f32 = 8.0;
+/// Waves in a stage; each stage moves the grid on to the next colour.
+const STAGE_WAVES: u32 = 5;
 
 /// The text block shown over the field as a wave begins.
 struct Banner {
@@ -73,6 +76,7 @@ pub struct World {
     pub rng: Rng,
     pub ship: Ship,
     pub enemies: Enemies,
+    pickups: Pickups,
     /// The wave a new game starts at (`--wave`).
     pub start_wave: u32,
     banner: Option<Banner>,
@@ -125,6 +129,7 @@ impl World {
             rng: Rng::new(seed),
             ship,
             enemies: Enemies::default(),
+            pickups: Pickups::default(),
             start_wave: 1,
             banner: None,
             lost_in_wave: false,
@@ -159,6 +164,7 @@ impl World {
         self.ship.shield = ship::SHIELD;
         self.enemies = Enemies::default();
         self.enemies.start_at(self.start_wave);
+        self.pickups = Pickups::default();
         self.banner = None;
         self.lost_in_wave = false;
         self.phase = Phase::Play;
@@ -182,6 +188,7 @@ impl World {
         self.grid = Grid::new(self.canvas.w, self.canvas.h, self.spacing);
         self.fx = Fx::default();
         self.enemies.list.clear();
+        self.pickups.list.clear();
         let (w, h) = self.dims();
         self.ship.x = self.ship.x.clamp(4.0, w - 4.0);
         self.ship.y = self.ship.y.clamp(4.0, h - 4.0);
@@ -225,6 +232,11 @@ impl World {
         let (sx, sy) = (self.ship.x, self.ship.y);
         let t = self.frames as f32 / 60.0;
         let goal = (w * (0.5 + 0.35 * (t * 0.31).sin()), h * (0.5 + 0.3 * (t * 0.62).sin()));
+        // a pick-up is worth a detour when nothing is near it
+        let goal = match self.pickups.nearest(sx, sy) {
+            Some((px, py)) if self.enemies.count_within(px, py, 30.0) == 0 => (px, py),
+            _ => goal,
+        };
         let (gx, gy) = (goal.0 - sx, goal.1 - sy);
         let gd = gx.hypot(gy).max(1.0);
         let (mut mx, mut my) = (gx / gd * 0.4, gy / gd * 0.4);
@@ -288,9 +300,17 @@ impl World {
                 if self.ship.fired {
                     self.sounds.push(Sound::Fire);
                 }
+                if self.ship.expired {
+                    self.sounds.push(Sound::PowerDown);
+                }
                 self.enemies.update(&mut self.rng, w, h, Some((self.ship.x, self.ship.y)));
                 self.enemies.shoot(&mut self.ship.shots, &mut self.grid, &mut self.fx, &mut self.rng);
                 self.take_events();
+                if let Some(p) = self.pickups.update(w, h, Some((self.ship.x, self.ship.y))) {
+                    log::info!("took {p:?}");
+                    self.ship.power_up(p);
+                    self.sounds.push(Sound::PowerUp);
+                }
                 if self.ship.shield == 0 {
                     if let Some(kind) = self.enemies.touching(self.ship.x, self.ship.y, ship::RADIUS) {
                         self.lose_ship(kind);
@@ -299,6 +319,7 @@ impl World {
             }
             Phase::Lost(t) => {
                 self.enemies.update(&mut self.rng, w, h, None);
+                self.pickups.update(w, h, None);
                 if t > 1 {
                     self.phase = Phase::Lost(t - 1);
                 } else if self.lives > 0 {
@@ -336,9 +357,10 @@ impl World {
     /// Score, multiplier and sounds for what happened to the enemies.
     fn take_events(&mut self) {
         let ev = std::mem::take(&mut self.enemies.events);
-        for &k in &ev.shot {
+        for &(k, x, y) in &ev.shot {
             self.sounds.push(Sound::Burst(k, self.mult));
             self.kill(k);
+            self.pickups.maybe_drop(k, x, y, &mut self.rng);
         }
         for &k in &ev.bombed {
             self.kill(k);
@@ -428,7 +450,9 @@ impl World {
 
     pub fn draw(&mut self, buf: &mut Buffer, screen: Rect, status: &str) {
         self.canvas.clear();
-        self.grid.draw(&mut self.canvas, GRID_COLOURS[self.colour].1);
+        let grid = GRID_COLOURS[self.stage_colour()].1;
+        self.grid.draw(&mut self.canvas, grid);
+        self.pickups.draw(&mut self.canvas);
         self.enemies.draw(&mut self.canvas);
         self.fx.draw(&mut self.canvas);
         self.ship.draw(&mut self.canvas, self.phase != Phase::Play);
@@ -437,7 +461,13 @@ impl World {
         if self.hud && screen.height > 0 {
             let hi = self.hi.max(if self.tainted { 0 } else { self.score });
             let mult = if self.mult > 1 { format!(" x{}", self.mult) } else { String::new() };
-            let line = format!(" braillestorm  wave {}  score {}{mult}  hi {}  lives {}  bombs {}  {status}", self.enemies.wave.max(1), thousands(self.score), thousands(hi), self.lives, self.ship.bombs);
+            let mut powers = String::new();
+            for (name, left) in [("wide", self.ship.wide), ("rapid", self.ship.rapid)] {
+                if left > 0 {
+                    powers += &format!("  {name} {}", left.div_ceil(60));
+                }
+            }
+            let line = format!(" braillestorm  wave {}  score {}{mult}  hi {}  lives {}  bombs {}{powers}  {status}", self.enemies.wave.max(1), thousands(self.score), thousands(hi), self.lives, self.ship.bombs);
             let style = Style::new().fg(Color::Rgb(0x6a, 0xd0, 0x6a)).bg(Color::Rgb(0, 0, 0));
             buf.set_stringn(screen.x, screen.y, format!("{line:<w$}", w = screen.width as usize), screen.width as usize, style);
         }
@@ -494,7 +524,7 @@ impl World {
         // typed out line after line, a few characters a frame, with a cursor
         let all: usize = lines.iter().map(|l| l.chars().count()).sum();
         let mut shown = (b.age as usize * all / BANNER_TYPE as usize).max(1);
-        let hue = BANNER_COLOURS[self.colour];
+        let hue = BANNER_COLOURS[self.stage_colour()];
         let mut y = top;
         for (i, l) in lines.iter().enumerate() {
             let scale = if i == 0 { big } else { small };
@@ -518,6 +548,13 @@ impl World {
                 break;
             }
         }
+    }
+
+    /// The grid's colour: F3 picks where the cycle starts, and every stage
+    /// of `STAGE_WAVES` waves moves it on one.
+    fn stage_colour(&self) -> usize {
+        let stage = self.enemies.wave.saturating_sub(1) / STAGE_WAVES;
+        (self.colour + stage as usize) % GRID_COLOURS.len()
     }
 
     pub fn snapshot(&self, fps: f32, c: &Controls) {
@@ -585,6 +622,18 @@ mod tests {
         w.lose_ship(Kind::Cursor);
         assert_eq!(w.mult, 1);
         assert!(w.sounds.contains(&Sound::Lost));
+    }
+
+    #[test]
+    fn stages_move_the_grid_colour_on() {
+        let mut w = World::new(Rect::new(0, 0, 100, 30), 1, 8.0);
+        w.restart();
+        w.enemies.start_at(1);
+        assert_eq!(w.stage_colour(), 0);
+        w.enemies.start_at(7);
+        assert_eq!(w.stage_colour(), 1);
+        w.colour = 3;
+        assert_eq!(w.stage_colour(), 0);
     }
 
     #[test]

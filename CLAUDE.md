@@ -5,11 +5,11 @@ sub-cells) so the ships, enemies and the warping grid read as glowing vector lin
 Brought to the terminal from Mark Incitti's GridWars (2005 to 2006, BlitzMax),
 itself a free tribute to Bizarre Creations' Geometry Wars (2003 to 2005).
 
-**Status** (2026-10-29, version 0.3.0): playable in waves, with sound. The
+**Status** (2026-10-29, version 0.4.0): playable in waves, with sound. The
 ship (a shell prompt `❯` as a chevron) flies over the warping grid, fires a
 twin stream and bombs, against five enemy kinds of our own (below) in
 numbered waves, each announced by a banner of big Braille letters; a score
-multiplier up to x10; three lives, an extra life and bomb every 25,000
+multiplier up to x10; pick-ups; stages that change the grid's colour; three lives, an extra life and bomb every 25,000
 points before the multiplier, game over and play again, pause, high score
 in `$XDG_DATA_HOME/braillestorm/hiscore`. Synthesised sound, `m` or
 `--mute` to silence it. A demo autopilot flies, dodges and shoots. Route
@@ -28,7 +28,7 @@ Wars' pattern): glibc Linux on Ubuntu 22.04 (x86_64, aarch64; libasound
 and libudev linked dynamically, the manifest's system_deps), macOS and Windows (MSVC),
 x86_64 and ARM64 each; archives `braillestorm-<target>` with the stripped
 binary, README.md and LICENSE, plus SHA256SUMS.
-Tags `v<version>`, now `v0.3.0` (2026-10-29). Only the Linux steps were
+Tags `v<version>`, now `v0.4.0` (2026-10-29). Only the Linux steps were
 run here (no rustup for other targets), so macOS and Windows build first
 on GitHub.
 
@@ -79,8 +79,8 @@ Brickspire's; rodio, ALSA on Linux), `src/text.rs` (our 5x7 pixel
 font drawn as dots, for the banners), `src/save.rs`
 (high score), `src/input.rs` (keys, mouse, gamepad to move/fire/bomb, after
 Panzer's), `src/world.rs` (the field, score and multiplier, lives, wave banners and
-clear bonus, game over, the nulls' pull, the sounds asked for, sandbox
-switches, demo autopilot),
+clear bonus, stages, game over, the nulls' pull, the sounds asked for,
+sandbox switches, demo autopilot), `src/pickups.rs` (drops, paced by time),
 `src/rng.rs`, `src/main.rs` (the loop at 60 fps, headless `--shot` and
 `--bench`), `tools/shot.py` (cells to PNG, Braille dots drawn as dots).
 
@@ -201,7 +201,8 @@ registrar checked). USPTO and EUIPO not searched.
    and lives. Done; balance to be tuned by playing.
 5. Named waves with a banner and a breather between them. Done (0.2.0).
 6. Sound, a score multiplier and two more enemy kinds (spinner, null).
-   Done (0.3.0). What follows is in `ROADMAP.md`.
+   Done (0.3.0).
+7. Pick-ups and stages. Done (0.4.0). What follows is in `ROADMAP.md`.
 
 ## Enemies (our own, 2026-10-20)
 
@@ -272,6 +273,28 @@ amber, lime on violet. Headline up to six times the font, about a fifth of
 the field's height; the rest at half the headline's scale; lines too wide
 for the window are left out.
 
+## Pick-ups and stages (2026-10-29, 0.4.0)
+
+A pick-up is a letter of the banner font in a pulsing box, left where an
+enemy was shot down (not bombed), waiting 8 s (blinking the last 2) for the
+ship to fly through it; at most two on the field. **W** wide: a third
+stream either side, 0.2 rad off the aim; **R** rapid: a volley every 3
+frames instead of 5; both last 6 s, shown with seconds left in the top line,
+and end when the ship is lost. **S** shield: 3 s untouchable (the respawn
+blink). **B** bomb: one more. Odds W 3, R 3, S 2, B 2 in ten.
+
+Drops are paced by time, not kills: nothing for 20 s after the last drop,
+then each kill's chance climbs to 0.15 over 30 s; a null drops half the
+time once 8 s have passed. Per-kill odds snowballed (more firepower, more
+kills, more drops): the autopilot outlived ten minutes on two of eight
+seeds. With 10 s powers the time pacing still let three of eight survive;
+6 s powers and a 3 s shield end all eight at waves 31 to 49 (0.3.0: 22 to
+37), with 12 to 25 drops a game. The autopilot detours for a pick-up when
+nothing is within 30 dots of it.
+
+**Stages**: every five waves the grid (and the banner with it) moves on to
+the next of the four colours; F3 picks where the cycle starts.
+
 ## Sound (2026-10-29)
 
 All synthesised in `src/audio.rs` at start-up, no files, on Brickspire's
@@ -281,7 +304,8 @@ pop, cursor blip stepped like bits going blank, fork crack, child chirp,
 spinner winding down, null implosion); a ping up a pentatonic scale under
 each burst once the multiplier is past x1; a knock when a shot dents a
 null; a faint shimmer when something fades in; bomb crack and boom; the
-ship lost; a rising shimmer when it is back; two notes for a wave, three
+ship lost; a rising shimmer when it is back; a bright run for a pick-up
+and a softer fall when wide or rapid runs out; two notes for a wave, three
 warning pulses for a rush; the multiplier going up, an extra life, game
 over. The same effect again within 40 ms is skipped (60 for volleys, 140
 for arrivals), so a bomb clearing forty enemies is one bang. Peaks checked

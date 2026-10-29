@@ -11,7 +11,9 @@ three bombs, in a twin-stick arena shooter drawn in Braille dots as thin
 glowing lines, over a grid that dents, ripples and rings with every shot,
 burst and bomb. Waves never stop, each bigger and faster than the last, and
 from the tenth every fifth wave is a rush. Every kill without losing your
-ship climbs the multiplier, up to x10. How long can you hold back the
+ship climbs the multiplier, up to x10, and now and then a shot-down enemy
+leaves a pick-up behind: wide fire, rapid fire, a shield or a bomb. Every
+five waves the grid turns a new colour. How long can you hold back the
 storm?
 
 Inspired by Mark Incitti's freeware GridWars (2005); no code, art or sound is

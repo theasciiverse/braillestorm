@@ -13,6 +13,7 @@ mod enemies;
 mod fx;
 mod grid;
 mod input;
+mod pickups;
 mod rng;
 mod save;
 mod ship;

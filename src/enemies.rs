@@ -118,8 +118,8 @@ const LINGER: u32 = 15 * 60;
 /// What happened to the enemies this frame, for the score and the sound.
 #[derive(Default)]
 pub struct Events {
-    /// Shot down, by kind.
-    pub shot: Vec<Kind>,
+    /// Shot down: kind and where.
+    pub shot: Vec<(Kind, f32, f32)>,
     /// Gone in a bomb blast.
     pub bombed: Vec<Kind>,
     pub splits: u32,
@@ -432,7 +432,7 @@ impl Enemies {
                     continue;
                 }
                 let e = self.list.swap_remove(i);
-                self.events.shot.push(e.kind);
+                self.events.shot.push((e.kind, e.x, e.y));
                 let sparks = if e.kind == Kind::Null { 400 } else { 60 };
                 self.burst(&e, grid, fx, rng, sparks);
                 if e.kind == Kind::Null {
@@ -644,7 +644,7 @@ mod tests {
         en.list[0].age = ARRIVE;
         let mut shots = vec![Shot::test(99.0, 50.0)];
         en.shoot(&mut shots, &mut grid, &mut fx, &mut rng);
-        assert_eq!(en.events.shot, vec![Kind::Fork]);
+        assert_eq!(en.events.shot.iter().map(|s| s.0).collect::<Vec<_>>(), vec![Kind::Fork]);
         assert_eq!(en.events.splits, 1);
         assert!(shots.is_empty());
         assert_eq!(en.list.iter().filter(|e| e.kind == Kind::Child).count(), 2);
@@ -665,7 +665,7 @@ mod tests {
             assert_eq!(en.list.is_empty(), i == NULL_HITS, "after hit {i}");
         }
         assert_eq!(en.events.dents, NULL_HITS - 1);
-        assert_eq!(en.events.shot, vec![Kind::Null]);
+        assert_eq!(en.events.shot.iter().map(|s| s.0).collect::<Vec<_>>(), vec![Kind::Null]);
     }
 
     #[test]

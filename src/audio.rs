@@ -40,6 +40,9 @@ pub enum Sound {
     Rush,
     /// The multiplier went up.
     Up,
+    /// A pick-up taken, and one running out.
+    PowerUp,
+    PowerDown,
     ExtraLife,
     GameOver,
 }
@@ -63,11 +66,13 @@ enum Sfx {
     Wave,
     Rush,
     Up,
+    PowerUp,
+    PowerDown,
     ExtraLife,
     GameOver,
 }
 
-const ALL_SFX: [Sfx; 18] = [
+const ALL_SFX: [Sfx; 20] = [
     Sfx::Fire,
     Sfx::Glob,
     Sfx::Cursor,
@@ -84,6 +89,8 @@ const ALL_SFX: [Sfx; 18] = [
     Sfx::Wave,
     Sfx::Rush,
     Sfx::Up,
+    Sfx::PowerUp,
+    Sfx::PowerDown,
     Sfx::ExtraLife,
     Sfx::GameOver,
 ];
@@ -160,6 +167,8 @@ impl Audio {
             Sound::Wave => Sfx::Wave,
             Sound::Rush => Sfx::Rush,
             Sound::Up => Sfx::Up,
+            Sound::PowerUp => Sfx::PowerUp,
+            Sound::PowerDown => Sfx::PowerDown,
             Sound::ExtraLife => Sfx::ExtraLife,
             Sound::GameOver => Sfx::GameOver,
         };
@@ -353,6 +362,10 @@ fn render_sfx(s: Sfx) -> Vec<f32> {
         // a rush: three warning pulses
         Sfx::Rush => tune(&[(57.0, 0.12), (0.0, 0.06), (57.0, 0.12), (0.0, 0.06), (57.0, 0.12), (69.0, 0.35)], 0.14, saw),
         Sfx::Up => tune(&[(84.0, 0.05), (91.0, 0.12)], 0.07, square),
+        // a pick-up: a quick bright run up and a shimmer over it
+        Sfx::PowerUp => chord(&[tune(&[(79.0, 0.04), (83.0, 0.04), (86.0, 0.04), (91.0, 0.16)], 0.12, square), glide(0.3, 1200.0, 2400.0, 0.04, sine)]),
+        // one running out: the same, falling and softer
+        Sfx::PowerDown => tune(&[(86.0, 0.05), (79.0, 0.05), (74.0, 0.12)], 0.07, tri),
         Sfx::ExtraLife => tune(&[(72.0, 0.07), (76.0, 0.07), (79.0, 0.07), (84.0, 0.07), (88.0, 0.25)], 0.13, square),
         Sfx::GameOver => tune(&[(64.0, 0.3), (60.0, 0.3), (57.0, 0.3), (52.0, 0.9)], 0.15, tri),
     }

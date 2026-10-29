@@ -16,12 +16,11 @@ From 0.4.0 on this is a proposal (2026-10-29), not settled yet.
 - A score multiplier up to x10
 - Two more enemy kinds: the spinner and the null
 
-## 0.4.0: pick-ups
+## 0.4.0: built
 
-- [ ] Pick-ups dropped by enemies now and then: more barrels, faster shots,
-      a shield, an extra bomb
-- [ ] Stages: every few waves a new grid colour, so a run feels like it goes
-      somewhere
+- Pick-ups now and then from enemies shot down, about one every half
+  minute: W wide fire, R rapid fire, S a short shield, B an extra bomb
+- Stages: every five waves the grid moves on to the next colour
 
 ## 0.5.0: more of the storm
 
