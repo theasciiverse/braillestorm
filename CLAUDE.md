@@ -5,32 +5,35 @@ sub-cells) so the ships, enemies and the warping grid read as glowing vector lin
 Brought to the terminal from Mark Incitti's GridWars (2005 to 2006, BlitzMax),
 itself a free tribute to Bizarre Creations' Geometry Wars (2003 to 2005).
 
-**Status** (2026-10-20, version 0.2.0): playable in waves. The ship (a
-shell prompt `❯` as a chevron) flies over the warping grid, fires a twin
-stream and bombs, against our first three enemy kinds (below) in numbered
-waves, each announced by a banner of big Braille letters; three lives, an extra life and bomb every 25,000 points, game over and play
-again, pause, high score in `$XDG_DATA_HOME/braillestorm/hiscore`. A demo
-autopilot flies, dodges and shoots. Route decided by David the same day: a
-spiritual successor of our own (below); everything else here is a first
-proposal. No sound yet.
+**Status** (2026-10-29, version 0.3.0): playable in waves, with sound. The
+ship (a shell prompt `❯` as a chevron) flies over the warping grid, fires a
+twin stream and bombs, against five enemy kinds of our own (below) in
+numbered waves, each announced by a banner of big Braille letters; a score
+multiplier up to x10; three lives, an extra life and bomb every 25,000
+points before the multiplier, game over and play again, pause, high score
+in `$XDG_DATA_HOME/braillestorm/hiscore`. Synthesised sound, `m` or
+`--mute` to silence it. A demo autopilot flies, dodges and shoots. Route
+decided by David on 2026-10-20: a spiritual successor of our own (below);
+everything else here is a first proposal. What comes next, release by
+release, is in `ROADMAP.md`.
 
-On the website mockup since 2026-10-20 with the NEW! banner: an entry in
-`websites/Asciiverse/dev/mock-titles.toml` (like Kaiku's: original game,
-not in `hub/catalog` yet; licence GPL-3.0-or-later, David, 2026-10-27), preview
+In `hub/catalog` since 2026-10-29 (`braillestorm.toml` and `.md`), on the
+website mockup since 2026-10-20 with the NEW! banner; licence
+GPL-3.0-or-later (David, 2026-10-27); preview
 `asciiverse/braillestorm.cast` copied to the site's `casts/`, local Linux
 build packaged by the site's `dev/build_catalog.py` into `dev-releases/`.
 Own git repo, branch `main`, private at github.com/theasciiverse/braillestorm.
 Release workflow `.github/workflows/release.yml` (2026-10-20, on ASCII
-Wars' pattern): glibc Linux on Ubuntu 22.04 (x86_64, aarch64; libudev
-linked dynamically, the manifest's system_deps), macOS and Windows (MSVC),
+Wars' pattern): glibc Linux on Ubuntu 22.04 (x86_64, aarch64; libasound
+and libudev linked dynamically, the manifest's system_deps), macOS and Windows (MSVC),
 x86_64 and ARM64 each; archives `braillestorm-<target>` with the stripped
 binary, README.md and LICENSE, plus SHA256SUMS.
-Tags `v<version>`, now `v0.2.0` (2026-10-28). Only the Linux steps were
+Tags `v<version>`, now `v0.3.0` (2026-10-29). Only the Linux steps were
 run here (no rustup for other targets), so macOS and Windows build first
 on GitHub.
 
 The preview (`asciiverse/record-preview.sh`, hub's `castrec.py`): `--demo
---seed 6 --fps 20 --wave 3`, 27 s with the banners for waves 3, 4 and 5,
+--seed 6 --fps 20 --wave 3 --mute`, 27 s with the banners for waves 3, 4 and 5,
 still at 12.2 s (the wave 4 banner), best of eight takes (the demo is
 deterministic per seed, so `--shot 27 --wave 3 --seed N` with
 `RUST_LOG=info` shows where each take's waves begin). It is 20 MB even so: the warping grid changes about half the screen every
@@ -42,6 +45,7 @@ start of a recording (a recorder never answers it).
 ```bash
 cargo run --release                          # play (see --help for every key)
 cargo run --release -- --demo                # the autopilot flies
+cargo run --release -- --mute                # no sound (m toggles it in play)
 cargo run --release -- --wave 10            # start at wave 10 (the first rush)
 cargo run --release -- --fps 20              # draw less often (the game still runs at 60)
 asciiverse/record-preview.sh                 # re-record the catalog preview
@@ -55,8 +59,8 @@ cargo run --release -- --shot 6 --size 100x30 --seed 4 --cells | python3 tools/s
 Controls: WASD or the left stick move; arrows, the left mouse button held
 (fires at the pointer) or the right stick fire; Space, right click or a
 pad's A or shoulder buttons bomb (3); p or Enter pause (a pad's Start;
-Back quits), Space or Enter play again after game over; losing focus
-pauses. Sandbox keys from the grid test: b
+Back quits), Space or Enter play again after game over; m sound on or
+off; losing focus pauses. Sandbox keys from the grid test: b
 black hole, h top line, F2 glow, F3 grid colour, F4/F5 spacing, F6 random
 blasts, F7 autopilot. With the kitty keyboard protocol keys are exact;
 without it WASD is held while repeats arrive (stutters briefly after the
@@ -69,11 +73,14 @@ blurred dim copy of the light as the cell background for glow),
 `src/grid.rs` (points with springs to their neighbours and back to rest,
 border pinned; blast and pull), `src/fx.rs` (sparks, black holes, bomb
 rings), `src/ship.rs` (ship, shots, bombs, shield after coming back),
-`src/enemies.rs` (the roster and the waves), `src/text.rs` (our 5x7 pixel
+`src/enemies.rs` (the roster, the waves, and what happened each frame as
+`Events`), `src/audio.rs` (every sound synthesised at start-up, after
+Brickspire's; rodio, ALSA on Linux), `src/text.rs` (our 5x7 pixel
 font drawn as dots, for the banners), `src/save.rs`
 (high score), `src/input.rs` (keys, mouse, gamepad to move/fire/bomb, after
-Panzer's), `src/world.rs` (the field, score, lives, wave banners and clear
-bonus, game over, sandbox switches, demo autopilot),
+Panzer's), `src/world.rs` (the field, score and multiplier, lives, wave banners and
+clear bonus, game over, the nulls' pull, the sounds asked for, sandbox
+switches, demo autopilot),
 `src/rng.rs`, `src/main.rs` (the loop at 60 fps, headless `--shot` and
 `--bench`), `tools/shot.py` (cells to PNG, Braille dots drawn as dots).
 
@@ -193,9 +200,8 @@ registrar checked). USPTO and EUIPO not searched.
 4. Our first three enemy kinds and spawning, then a playable loop with score
    and lives. Done; balance to be tuned by playing.
 5. Named waves with a banner and a breather between them. Done (0.2.0).
-6. Next candidates: sound (synthesised), a score multiplier, pick-ups, more
-   enemy kinds (a black-hole enemy using the sandbox hole), stages with a
-   grid colour each.
+6. Sound, a score multiplier and two more enemy kinds (spinner, null).
+   Done (0.3.0). What follows is in `ROADMAP.md`.
 
 ## Enemies (our own, 2026-10-20)
 
@@ -212,6 +218,19 @@ hurt meanwhile; new ones keep clear of the ship.
 - **Fork** `Y` (pink, 100): turns slowly toward the ship; shot, it throws
   two **children** (orange diamonds, 25) out either side of the shot's line,
   fast homers that overshoot. A bomb kills a fork whole. From wave 4.
+- **Spinner** `|/-\` (lime, 75; 2026-10-29): the busy-terminal spinner, a
+  bar turning in eighth turns. It spins in place for 50 frames, then dashes
+  (2.6 dots a frame, at most 40 frames) along whichever axis lines it up
+  with the ship, stopping when level with it or at a wall. From wave 6,
+  about one spawn in six.
+- **Null** `∅` (warm white, 250; 2026-10-29): the null device, a ring with
+  the glyph's leaning stroke and a faint halo. Creeps after the ship, pulls
+  the grid down within 70 dots, drinks sparks, bends the ship's shots and
+  tugs the ship itself; takes 25 hits, flinching at each (40 made the
+  autopilot's games end ten waves early); a bomb kills it whole. Dies with a
+  ring and a big burst. From wave 8, one at a time (two from wave 16), a
+  spawn roll above 0.96. Our own take on the gravity-well idea the genre
+  shares: it never spawns anything and does not grow.
 
 ## Waves (David's pick, 2026-10-20)
 
@@ -223,7 +242,14 @@ moves 5% faster each wave, up to 1.6 times. Every fifth wave from the 10th
 is a **rush**: half the spawns are cursors out of every corner. Once a wave
 has sent everything, the next starts when the field is clear, or after
 15 s if some are left wandering; then a 2.5 s **breather** with no spawns.
-Clearing a wave without losing the ship pays `100 * N`. Losing the ship
+Clearing a wave without losing the ship pays `100 * N`.
+
+**Multiplier** (2026-10-29): kills, by shot or bomb, without losing the
+ship raise it one step after `25 * current` kills (x2 after 25, x3 after
+50 more, ...), up to x10; losing the ship drops it to x1. It shows after the
+score in the top line. Kill points are multiplied, the clear bonus is not,
+and extra lives count points before the multiplier: counting the
+multiplied score gave the autopilot about 150 extra lives and bombs a game. Losing the ship
 bursts every enemy (no points); it returns after 100 frames with a 2 s
 blinking shield.
 
@@ -245,6 +271,27 @@ Colour by grid colour (F3): amber on blue, magenta on green, cyan on
 amber, lime on violet. Headline up to six times the font, about a fifth of
 the field's height; the rest at half the headline's scale; lines too wide
 for the window are left out.
+
+## Sound (2026-10-29)
+
+All synthesised in `src/audio.rs` at start-up, no files, on Brickspire's
+pattern; nothing of GridWars'. A soft zip for each volley (kept very low,
+it plays a dozen times a second); a burst of its own for every kind (glob
+pop, cursor blip stepped like bits going blank, fork crack, child chirp,
+spinner winding down, null implosion); a ping up a pentatonic scale under
+each burst once the multiplier is past x1; a knock when a shot dents a
+null; a faint shimmer when something fades in; bomb crack and boom; the
+ship lost; a rising shimmer when it is back; two notes for a wave, three
+warning pulses for a rush; the multiplier going up, an extra life, game
+over. The same effect again within 40 ms is skipped (60 for volleys, 140
+for arrivals), so a bomb clearing forty enemies is one bang. Peaks checked
+by a test (all under 1.0; the bomb and the ship lost are the loudest at
+about 0.8). Without an audio device the game is silent and says "no sound"
+in the top line; `m` or `--mute` silences it. Not yet heard by David.
+
+Measured 2026-10-29 with the new kinds and the multiplier (`--bench 36000`
+at 100x30, seeds 1 to 5): the autopilot's games end at waves 22 to 37,
+with two to seven bonus lives; every kind has taken a ship.
 
 Measured 2026-10-20 with waves (`--bench 36000`, seeds 1 to 3): the
 autopilot, which aims perfectly, reaches game over at waves 30 to 38 at

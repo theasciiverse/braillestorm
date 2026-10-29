@@ -73,6 +73,7 @@ pub enum Cmd {
     AutoBlasts,
     Hole,
     Hud,
+    Mute,
     Demo,
     /// Play again after game over, else pause.
     Start,
@@ -190,6 +191,7 @@ impl Input {
             KeyCode::Char('p' | 'P') => self.cmds.push(Cmd::Pause),
             KeyCode::Char('b' | 'B') => self.cmds.push(Cmd::Hole),
             KeyCode::Char('h' | 'H') => self.cmds.push(Cmd::Hud),
+            KeyCode::Char('m' | 'M') => self.cmds.push(Cmd::Mute),
             KeyCode::F(2) => self.cmds.push(Cmd::Glow),
             KeyCode::F(3) => self.cmds.push(Cmd::Colour),
             KeyCode::F(4) => self.cmds.push(Cmd::Denser),

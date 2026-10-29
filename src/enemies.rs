@@ -6,6 +6,10 @@
 //!   the longer it chases. 50 points.
 //! - Fork, a branching `Y` that homes in slowly; shot, it forks into two
 //!   children that rush the ship and overshoot. 100 points, children 25.
+//! - Spinner, the `|/-\` of a busy terminal: it spins in place, then dashes
+//!   straight across or up and down to line up with the ship. 75 points.
+//! - Null, `∅`, the null device: it creeps after the ship pulling the grid,
+//!   sparks, shots and the ship itself in, and takes twenty-five hits. 250 points.
 //!
 //! Each one fades in where it spawns and can neither hurt nor be hurt until
 //! it has. The spawner speeds up and lets in new kinds as the game goes on,
@@ -24,6 +28,8 @@ pub enum Kind {
     Cursor,
     Fork,
     Child,
+    Spinner,
+    Null,
 }
 
 impl Kind {
@@ -33,6 +39,8 @@ impl Kind {
             Kind::Cursor => 4.5,
             Kind::Fork => 5.0,
             Kind::Child => 2.5,
+            Kind::Spinner => 4.5,
+            Kind::Null => 7.0,
         }
     }
 
@@ -42,6 +50,8 @@ impl Kind {
             Kind::Cursor => 50,
             Kind::Fork => 100,
             Kind::Child => 25,
+            Kind::Spinner => 75,
+            Kind::Null => 250,
         }
     }
 
@@ -51,12 +61,31 @@ impl Kind {
             Kind::Cursor => [0.2, 0.9, 1.3],
             Kind::Fork => [1.3, 0.35, 0.8],
             Kind::Child => [1.3, 0.6, 0.15],
+            Kind::Spinner => [0.6, 1.3, 0.25],
+            Kind::Null => [1.35, 1.15, 0.95],
+        }
+    }
+
+    /// Hits it takes.
+    fn hits(self) -> u32 {
+        match self {
+            Kind::Null => NULL_HITS,
+            _ => 1,
         }
     }
 }
 
 /// Frames an enemy takes to fade in.
 const ARRIVE: u32 = 45;
+const NULL_HITS: u32 = 25;
+/// A null's reach, in dots, and how hard it pulls at its rim.
+pub const NULL_REACH: f32 = 70.0;
+const NULL_PULL: f32 = 0.05;
+/// A spinner spins this many frames between dashes, and dashes at most this
+/// many, at `SPIN_DASH` dots a frame.
+const SPIN_WAIT: u32 = 50;
+const SPIN_DASH_FRAMES: u32 = 40;
+const SPIN_DASH: f32 = 2.6;
 
 pub struct Enemy {
     pub kind: Kind,
@@ -68,6 +97,10 @@ pub struct Enemy {
     angle: f32,
     /// Frames since it spawned.
     age: u32,
+    /// Hits left.
+    hp: u32,
+    /// A spinner's frames into spinning or dashing; a null's flinch after a hit.
+    t: u32,
 }
 
 impl Enemy {
@@ -81,6 +114,18 @@ pub const BREATHER: u32 = 150;
 /// Frames a wave may linger once everything is out before the next comes
 /// anyway (a glob can wander a long way from the guns).
 const LINGER: u32 = 15 * 60;
+
+/// What happened to the enemies this frame, for the score and the sound.
+#[derive(Default)]
+pub struct Events {
+    /// Shot down, by kind.
+    pub shot: Vec<Kind>,
+    /// Gone in a bomb blast.
+    pub bombed: Vec<Kind>,
+    pub splits: u32,
+    pub dents: u32,
+    pub arrivals: u32,
+}
 
 /// A wave has begun: its number, and whether the one before it ended with
 /// the field cleared (rather than by running out of time).
@@ -101,6 +146,7 @@ pub struct Enemies {
     /// Frames of quiet left before the wave starts sending.
     pub breather: u32,
     wait: u32,
+    pub events: Events,
 }
 
 /// A warning for a wave's banner, if it needs one: only rushes do (the
@@ -178,8 +224,15 @@ impl Enemies {
                     }
                 }
             }
+            _ if wave >= 8 && roll > 0.96 && self.count(Kind::Null) < 1 + (wave >= 16) as usize => {
+                if let Some((x, y)) = place(rng, w, h, ship) {
+                    self.add(Kind::Null, x, y, rng);
+                }
+            }
             _ => {
-                let kind = if wave >= 4 && roll < 0.5 {
+                let kind = if wave >= 6 && roll > 0.82 {
+                    Kind::Spinner
+                } else if wave >= 4 && roll < 0.5 {
                     Kind::Fork
                 } else if wave >= 2 && roll < 0.75 {
                     Kind::Cursor
@@ -191,12 +244,39 @@ impl Enemies {
                 }
             }
         }
-        self.budget = self.budget.saturating_sub((self.list.len() - before) as u32);
+        let arrived = (self.list.len() - before) as u32;
+        self.budget = self.budget.saturating_sub(arrived);
+        self.events.arrivals += arrived;
         None
     }
 
     fn add(&mut self, kind: Kind, x: f32, y: f32, rng: &mut Rng) {
-        self.list.push(Enemy { kind, x, y, vx: 0.0, vy: 0.0, angle: rng.f32() * TAU, age: 0 });
+        self.list.push(Enemy { kind, x, y, vx: 0.0, vy: 0.0, angle: rng.f32() * TAU, age: 0, hp: kind.hits(), t: 0 });
+    }
+
+    fn count(&self, kind: Kind) -> usize {
+        self.list.iter().filter(|e| e.kind == kind).count()
+    }
+
+    /// Where the nulls are, and how hard each pulls: (x, y, strength).
+    pub fn wells(&self) -> Vec<(f32, f32, f32)> {
+        self.list.iter().filter(|e| e.kind == Kind::Null && e.solid()).map(|e| (e.x, e.y, 1.0)).collect()
+    }
+
+    /// The pull of every null on something at (x, y): a velocity change,
+    /// strongest at the rim, nothing past its reach.
+    pub fn pull_at(&self, x: f32, y: f32, k: f32) -> (f32, f32) {
+        let (mut ax, mut ay) = (0.0, 0.0);
+        for (nx, ny, s) in self.wells() {
+            let (dx, dy) = (nx - x, ny - y);
+            let d = dx.hypot(dy).max(1.0);
+            if d < NULL_REACH {
+                let f = NULL_PULL * s * k * (1.0 - d / NULL_REACH).powf(0.7);
+                ax += dx / d * f;
+                ay += dy / d * f;
+            }
+        }
+        (ax, ay)
     }
 
     /// Move everything one frame; `ship` is where they chase, if the ship
@@ -253,10 +333,47 @@ impl Enemies {
                     e.vy = (e.vy + ty * 0.12) * 0.95;
                     e.angle += 0.25;
                 }
+                Kind::Spinner => {
+                    e.t += 1;
+                    if e.vx == 0.0 && e.vy == 0.0 {
+                        // spinning, a quarter turn every few frames, then off
+                        // along whichever axis lines it up with the ship
+                        if e.t % 4 == 0 {
+                            e.angle += PI / 4.0;
+                        }
+                        if e.t >= SPIN_WAIT {
+                            e.t = 0;
+                            if let Some((sx, sy)) = ship {
+                                let (dx, dy) = (sx - e.x, sy - e.y);
+                                (e.vx, e.vy) = if dx.abs() > dy.abs() { (SPIN_DASH * dx.signum(), 0.0) } else { (0.0, SPIN_DASH * dy.signum()) };
+                                e.angle = if e.vx != 0.0 { 0.0 } else { PI / 2.0 };
+                            }
+                        }
+                    } else {
+                        // dashing until level with the ship, or out of breath
+                        let level = ship.is_some_and(|(sx, sy)| if e.vx != 0.0 { (sx - e.x).abs() < 2.0 } else { (sy - e.y).abs() < 2.0 });
+                        if level || e.t >= SPIN_DASH_FRAMES {
+                            (e.vx, e.vy) = (0.0, 0.0);
+                            e.t = 0;
+                        }
+                    }
+                }
+                Kind::Null => {
+                    let (tx, ty) = toward.unwrap_or((0.0, 0.0));
+                    e.vx = (e.vx + tx * 0.01) * 0.98;
+                    e.vy = (e.vy + ty * 0.01) * 0.98;
+                    e.angle += 0.02;
+                    e.t = e.t.saturating_sub(1);
+                }
             }
             e.x += e.vx * heat;
             e.y += e.vy * heat;
             let r = e.kind.radius();
+            if e.kind == Kind::Spinner && (e.x < r || e.x > w - r || e.y < r || e.y > h - r) {
+                // a wall ends a dash
+                (e.vx, e.vy) = (0.0, 0.0);
+                e.t = 0;
+            }
             if e.x < r || e.x > w - r {
                 e.vx = -e.vx;
                 e.angle = PI - e.angle;
@@ -288,9 +405,9 @@ impl Enemies {
         }
     }
 
-    /// Burst whatever a shot touches (and that shot); returns the points.
-    pub fn shoot(&mut self, shots: &mut Vec<Shot>, grid: &mut Grid, fx: &mut Fx, rng: &mut Rng) -> u64 {
-        let mut points = 0;
+    /// Burst whatever a shot touches (and that shot); what went is in
+    /// `events.shot`.
+    pub fn shoot(&mut self, shots: &mut Vec<Shot>, grid: &mut Grid, fx: &mut Fx, rng: &mut Rng) {
         let mut i = 0;
         while i < self.list.len() {
             let e = &self.list[i];
@@ -299,36 +416,54 @@ impl Enemies {
             if let Some(k) = hit {
                 let (sx, sy) = (shots[k].x, shots[k].y);
                 shots.swap_remove(k);
+                if self.list[i].hp > 1 {
+                    // it takes more: a dent and a few sparks
+                    let e = &mut self.list[i];
+                    e.hp -= 1;
+                    e.t = 8;
+                    self.events.dents += 1;
+                    grid.blast(sx, sy, 2.0, 30.0);
+                    for _ in 0..6 {
+                        let a = rng.f32() * TAU;
+                        let v = 0.6 + rng.f32() * 1.6;
+                        fx.spark(sx, sy, a.cos() * v, a.sin() * v, e.kind.colour(), 0.05);
+                    }
+                    i += 1;
+                    continue;
+                }
                 let e = self.list.swap_remove(i);
-                points += e.kind.points();
-                self.burst(&e, grid, fx, rng, 60);
+                self.events.shot.push(e.kind);
+                let sparks = if e.kind == Kind::Null { 400 } else { 60 };
+                self.burst(&e, grid, fx, rng, sparks);
+                if e.kind == Kind::Null {
+                    fx.ring(e.x, e.y);
+                    grid.blast(e.x, e.y, 10.0, 160.0);
+                }
                 if e.kind == Kind::Fork {
+                    self.events.splits += 1;
                     // two children thrown out either side of the shot's line
                     let a = (e.y - sy).atan2(e.x - sx);
                     for side in [-1.0f32, 1.0] {
                         let b = a + side * PI / 2.0;
                         let (vx, vy) = (b.cos() * 2.0, b.sin() * 2.0);
-                        self.list.push(Enemy { kind: Kind::Child, x: e.x + vx * 2.0, y: e.y + vy * 2.0, vx, vy, angle: 0.0, age: ARRIVE });
+                        self.list.push(Enemy { kind: Kind::Child, x: e.x + vx * 2.0, y: e.y + vy * 2.0, vx, vy, angle: 0.0, age: ARRIVE, hp: 1, t: 0 });
                     }
                 }
                 continue;
             }
             i += 1;
         }
-        points
     }
 
-    /// Burst every enemy within `radius` of (x, y), for bombs; returns the
-    /// points. Forks die whole.
-    pub fn clear_around(&mut self, x: f32, y: f32, radius: f32, grid: &mut Grid, fx: &mut Fx, rng: &mut Rng) -> u64 {
+    /// Burst every enemy within `radius` of (x, y), for bombs; what went is
+    /// in `events.bombed`. Forks and nulls die whole.
+    pub fn clear_around(&mut self, x: f32, y: f32, radius: f32, grid: &mut Grid, fx: &mut Fx, rng: &mut Rng) {
         let (gone, kept): (Vec<Enemy>, Vec<Enemy>) = self.list.drain(..).partition(|e| (e.x - x).hypot(e.y - y) < radius);
         self.list = kept;
-        let mut points = 0;
         for e in gone {
-            points += e.kind.points();
+            self.events.bombed.push(e.kind);
             self.burst(&e, grid, fx, rng, 30);
         }
-        points
     }
 
     /// Everything bursts, for when the ship is lost; no points.
@@ -403,6 +538,33 @@ impl Enemies {
                 Kind::Child => {
                     let (ca, sa) = (e.angle.cos() * r, e.angle.sin() * r);
                     c.poly(&[(x + ca, y + sa), (x - sa, y + ca), (x - ca, y - sa), (x + sa, y - ca)], col);
+                }
+                Kind::Spinner => {
+                    // one bar of | / - \, a cell's height long, with a
+                    // faint trail of the step before while it spins
+                    let bar = |a: f32, k: f32, c: &mut Canvas| {
+                        let (dx, dy) = (a.cos() * r * 0.75, a.sin() * r * 1.3);
+                        c.line(x - dx, y - dy, x + dx, y + dy, [col[0] * k, col[1] * k, col[2] * k]);
+                    };
+                    if e.vx == 0.0 && e.vy == 0.0 {
+                        bar(e.angle - PI / 4.0, 0.3, c);
+                    }
+                    bar(e.angle, 1.0, c);
+                    c.circle(x, y, 1.0, col);
+                }
+                Kind::Null => {
+                    // the null sign: a ring with a stroke through it, and
+                    // a faint halo where its pull reaches; it flinches when hit
+                    let flinch = 1.0 + e.t as f32 * 0.03;
+                    let rr = r * flinch;
+                    c.circle(x, y, rr, col);
+                    // the stroke leans like the glyph's, rocking a little
+                    let a = PI / 4.0 + e.angle.sin() * 0.12;
+                    let (dx, dy) = (a.cos() * rr * 1.35, a.sin() * rr * 1.35);
+                    c.line(x - dx, y + dy, x + dx, y - dy, col);
+                    let hurt = 1.0 - e.hp as f32 / NULL_HITS as f32;
+                    let halo = 0.12 + hurt * 0.15;
+                    c.circle(x, y, rr * 2.2, [col[0] * halo, col[1] * halo * 0.6, col[2] * halo * 0.4]);
                 }
             }
         }
@@ -481,10 +643,56 @@ mod tests {
         en.add(Kind::Fork, 100.0, 50.0, &mut rng);
         en.list[0].age = ARRIVE;
         let mut shots = vec![Shot::test(99.0, 50.0)];
-        let points = en.shoot(&mut shots, &mut grid, &mut fx, &mut rng);
-        assert_eq!(points, 100);
+        en.shoot(&mut shots, &mut grid, &mut fx, &mut rng);
+        assert_eq!(en.events.shot, vec![Kind::Fork]);
+        assert_eq!(en.events.splits, 1);
         assert!(shots.is_empty());
         assert_eq!(en.list.iter().filter(|e| e.kind == Kind::Child).count(), 2);
+    }
+
+    #[test]
+    fn a_null_takes_all_its_hits() {
+        let mut rng = Rng::new(3);
+        let mut grid = Grid::new(200, 116, 8.0);
+        let mut fx = Fx::default();
+        let mut en = Enemies::default();
+        en.add(Kind::Null, 100.0, 50.0, &mut rng);
+        en.list[0].age = ARRIVE;
+        for i in 1..=NULL_HITS {
+            let mut shots = vec![Shot::test(97.0, 50.0)];
+            en.shoot(&mut shots, &mut grid, &mut fx, &mut rng);
+            assert!(shots.is_empty(), "hit {i} not taken");
+            assert_eq!(en.list.is_empty(), i == NULL_HITS, "after hit {i}");
+        }
+        assert_eq!(en.events.dents, NULL_HITS - 1);
+        assert_eq!(en.events.shot, vec![Kind::Null]);
+    }
+
+    #[test]
+    fn a_null_pulls_toward_itself_within_reach_only() {
+        let mut rng = Rng::new(3);
+        let mut en = Enemies::default();
+        en.add(Kind::Null, 100.0, 50.0, &mut rng);
+        en.list[0].age = ARRIVE;
+        let (ax, ay) = en.pull_at(130.0, 50.0, 1.0);
+        assert!(ax < 0.0 && ay.abs() < 1e-6, "{ax} {ay}");
+        assert_eq!(en.pull_at(100.0 + NULL_REACH + 1.0, 50.0, 1.0), (0.0, 0.0));
+    }
+
+    #[test]
+    fn a_spinner_dashes_to_line_up_with_the_ship() {
+        let mut rng = Rng::new(3);
+        let mut en = Enemies::default();
+        en.add(Kind::Spinner, 40.0, 50.0, &mut rng);
+        en.list[0].age = ARRIVE;
+        let ship = (160.0, 60.0);
+        for _ in 0..SPIN_WAIT + SPIN_DASH_FRAMES + 5 {
+            en.update(&mut rng, 200.0, 116.0, Some(ship));
+        }
+        let e = &en.list[0];
+        // it went sideways, toward the ship's column, not up or down
+        assert!(e.x > 100.0, "x {}", e.x);
+        assert!((e.y - 50.0).abs() < 1.0, "y {}", e.y);
     }
 
     #[test]

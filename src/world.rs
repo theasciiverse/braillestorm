@@ -1,10 +1,12 @@
 //! The play field and the game on it: canvas, grid, effects, the ship and
-//! the enemies, score, lives and game over; plus the sandbox switches from
+//! the enemies, score and multiplier, lives and game over, and the sounds
+//! it all asks for; plus the sandbox switches from
 //! the grid test (glow, grid colour and spacing, random blasts) and a demo
 //! autopilot that flies the ship.
 
+use crate::audio::Sound;
 use crate::canvas::{Canvas, Rgb};
-use crate::enemies::{self, Enemies, NewWave};
+use crate::enemies::{self, Enemies, Kind, NewWave};
 use crate::fx::Fx;
 use crate::grid::Grid;
 use crate::input::Controls;
@@ -25,7 +27,8 @@ const BANNER_COLOURS: [Rgb; 4] = [[1.4, 0.85, 0.2], [1.3, 0.3, 1.1], [0.3, 1.0, 
 const HUES: [Rgb; 6] = [[1.0, 0.45, 0.1], [0.2, 0.9, 1.0], [1.0, 0.25, 0.7], [0.4, 1.0, 0.3], [1.0, 0.9, 0.2], [0.6, 0.4, 1.0]];
 const BOMB_RADIUS: f32 = 200.0;
 const LIVES: u32 = 3;
-/// An extra life and an extra bomb every this many points.
+/// An extra life and an extra bomb every this many points, counted before
+/// the multiplier, so a long streak raises the score but not the lives.
 const BONUS_EVERY: u64 = 25_000;
 /// Frames between losing the ship and it coming back (or game over).
 const LOST: u32 = 100;
@@ -39,6 +42,12 @@ const BANNER_FADE: u32 = 25;
 const BANNER_LIFE: u32 = enemies::BREATHER;
 /// Points per wave number for clearing a wave without losing the ship.
 const CLEAR_BONUS: u64 = 100;
+/// The multiplier goes up one after `MULT_STEP` times its value in kills
+/// without losing the ship (x2 after 25, x3 after 50 more, ...), to `MULT_MAX`.
+const MULT_STEP: u32 = 25;
+const MULT_MAX: u32 = 10;
+/// How hard a null bends shots compared with the ship.
+const SHOT_PULL: f32 = 8.0;
 
 /// The text block shown over the field as a wave begins.
 struct Banner {
@@ -72,6 +81,15 @@ pub struct World {
     pub phase: Phase,
     pub paused: bool,
     pub score: u64,
+    /// Points are multiplied by this; it climbs with kills and drops back
+    /// to 1 when the ship is lost.
+    pub mult: u32,
+    /// Kills since the multiplier last went up.
+    streak: u32,
+    /// The score without the multiplier, which the extra lives go by.
+    base: u64,
+    /// Sounds asked for this frame, for the caller to play.
+    pub sounds: Vec<Sound>,
     pub lives: u32,
     pub hi: u64,
     /// Whether this game beat the high score it started with.
@@ -113,6 +131,10 @@ impl World {
             phase: Phase::Play,
             paused: false,
             score: 0,
+            mult: 1,
+            streak: 0,
+            base: 0,
+            sounds: Vec::new(),
             lives: LIVES,
             hi: 0,
             new_hi: false,
@@ -142,6 +164,9 @@ impl World {
         self.phase = Phase::Play;
         self.paused = false;
         self.score = 0;
+        self.mult = 1;
+        self.streak = 0;
+        self.base = 0;
         self.lives = LIVES;
         self.new_hi = false;
         self.next_bonus = BONUS_EVERY;
@@ -229,6 +254,7 @@ impl World {
             return;
         }
         self.frames += 1;
+        self.sounds.clear();
         self.tainted |= self.demo;
         let (w, h) = self.dims();
         if self.auto_blasts {
@@ -247,13 +273,24 @@ impl World {
                 if let Some(nw) = self.enemies.spawn(&mut self.rng, w, h, (self.ship.x, self.ship.y)) {
                     self.new_wave(nw);
                 }
+                // the nulls pull at the ship, and harder at its shots
+                let (ax, ay) = self.enemies.pull_at(self.ship.x, self.ship.y, 1.0);
+                self.ship.nudge(ax, ay);
+                for s in &mut self.ship.shots {
+                    let (ax, ay) = self.enemies.pull_at(s.x, s.y, SHOT_PULL);
+                    s.vx += ax;
+                    s.vy += ay;
+                }
                 if let Some((x, y)) = self.ship.update(c, &mut self.grid, &mut self.fx, &mut self.rng, w, h) {
-                    let p = self.enemies.clear_around(x, y, BOMB_RADIUS, &mut self.grid, &mut self.fx, &mut self.rng);
-                    self.add_score(p);
+                    self.sounds.push(Sound::Bomb);
+                    self.enemies.clear_around(x, y, BOMB_RADIUS, &mut self.grid, &mut self.fx, &mut self.rng);
+                }
+                if self.ship.fired {
+                    self.sounds.push(Sound::Fire);
                 }
                 self.enemies.update(&mut self.rng, w, h, Some((self.ship.x, self.ship.y)));
-                let p = self.enemies.shoot(&mut self.ship.shots, &mut self.grid, &mut self.fx, &mut self.rng);
-                self.add_score(p);
+                self.enemies.shoot(&mut self.ship.shots, &mut self.grid, &mut self.fx, &mut self.rng);
+                self.take_events();
                 if self.ship.shield == 0 {
                     if let Some(kind) = self.enemies.touching(self.ship.x, self.ship.y, ship::RADIUS) {
                         self.lose_ship(kind);
@@ -266,6 +303,7 @@ impl World {
                     self.phase = Phase::Lost(t - 1);
                 } else if self.lives > 0 {
                     self.ship.respawn();
+                    self.sounds.push(Sound::Back);
                     self.phase = Phase::Play;
                     log::info!("ship back, {} lives left", self.lives);
                 } else {
@@ -287,8 +325,44 @@ impl World {
                 self.banner = None;
             }
         }
-        self.fx.update(&mut self.grid, &mut self.rng, w, h);
+        let wells = self.enemies.wells();
+        for &(x, y, s) in &wells {
+            self.grid.pull(x, y, 0.3 * s, enemies::NULL_REACH);
+        }
+        self.fx.update(&mut self.grid, &mut self.rng, w, h, &wells);
         self.grid.update();
+    }
+
+    /// Score, multiplier and sounds for what happened to the enemies.
+    fn take_events(&mut self) {
+        let ev = std::mem::take(&mut self.enemies.events);
+        for &k in &ev.shot {
+            self.sounds.push(Sound::Burst(k, self.mult));
+            self.kill(k);
+        }
+        for &k in &ev.bombed {
+            self.kill(k);
+        }
+        if ev.splits > 0 {
+            self.sounds.push(Sound::Split);
+        }
+        if ev.dents > 0 {
+            self.sounds.push(Sound::Dent);
+        }
+        if ev.arrivals > 0 {
+            self.sounds.push(Sound::Arrive);
+        }
+    }
+
+    fn kill(&mut self, k: Kind) {
+        self.add_score(k.points() * self.mult as u64, k.points());
+        self.streak += 1;
+        if self.mult < MULT_MAX && self.streak >= MULT_STEP * self.mult {
+            self.streak = 0;
+            self.mult += 1;
+            self.sounds.push(Sound::Up);
+            log::info!("multiplier x{} at {}", self.mult, self.score);
+        }
     }
 
     /// A wave begins: the clear bonus for the last one, and its banner.
@@ -299,20 +373,24 @@ impl World {
         // the first wave of a game has nothing before it to have cleared
         if nw.wave > self.start_wave && nw.cleared && !self.lost_in_wave {
             let bonus = CLEAR_BONUS * (nw.wave - 1) as u64;
-            self.add_score(bonus);
+            self.add_score(bonus, bonus);
             lines.push(format!("+{}", thousands(bonus)));
         }
+        self.sounds.push(if enemies::wave_note(nw.wave).is_some() { Sound::Rush } else { Sound::Wave });
         log::info!("wave {} begins at frame {}: {lines:?}", nw.wave, self.frames);
         self.lost_in_wave = false;
         self.banner = Some(Banner { lines, age: 0 });
     }
 
-    fn add_score(&mut self, p: u64) {
+    /// `p` points to the score, `base` of them before the multiplier.
+    fn add_score(&mut self, p: u64, base: u64) {
         self.score += p;
-        while self.score >= self.next_bonus {
+        self.base += base;
+        while self.base >= self.next_bonus {
             self.next_bonus += BONUS_EVERY;
             self.lives += 1;
             self.ship.bombs += 1;
+            self.sounds.push(Sound::ExtraLife);
             log::info!("bonus at {}: lives {} bombs {}", self.score, self.lives, self.ship.bombs);
         }
     }
@@ -322,6 +400,9 @@ impl World {
         log::info!("ship lost to {by:?} at ({x:.0}, {y:.0}), score {}, {} lives left", self.score, self.lives - 1);
         self.lives -= 1;
         self.lost_in_wave = true;
+        self.mult = 1;
+        self.streak = 0;
+        self.sounds.push(Sound::Lost);
         self.fx.blast(&mut self.grid, &mut self.rng, x, y, [0.75, 1.3, 0.85], 300);
         self.fx.ring(x, y);
         self.grid.blast(x, y, 14.0, 260.0);
@@ -333,6 +414,7 @@ impl World {
     fn game_over(&mut self) {
         self.phase = Phase::Over(0);
         self.banner = None;
+        self.sounds.push(Sound::GameOver);
         let counts = !self.tainted;
         if counts && self.score > self.hi {
             self.hi = self.score;
@@ -354,7 +436,8 @@ impl World {
         self.canvas.resolve(buf, self.area, self.glow);
         if self.hud && screen.height > 0 {
             let hi = self.hi.max(if self.tainted { 0 } else { self.score });
-            let line = format!(" braillestorm  wave {}  score {}  hi {}  lives {}  bombs {}  {status}", self.enemies.wave.max(1), thousands(self.score), thousands(hi), self.lives, self.ship.bombs);
+            let mult = if self.mult > 1 { format!(" x{}", self.mult) } else { String::new() };
+            let line = format!(" braillestorm  wave {}  score {}{mult}  hi {}  lives {}  bombs {}  {status}", self.enemies.wave.max(1), thousands(self.score), thousands(hi), self.lives, self.ship.bombs);
             let style = Style::new().fg(Color::Rgb(0x6a, 0xd0, 0x6a)).bg(Color::Rgb(0, 0, 0));
             buf.set_stringn(screen.x, screen.y, format!("{line:<w$}", w = screen.width as usize), screen.width as usize, style);
         }
@@ -439,11 +522,12 @@ impl World {
 
     pub fn snapshot(&self, fps: f32, c: &Controls) {
         log::debug!(
-            "snapshot frame {} fps {fps:.1} phase {:?} paused {} score {} lives {} ship ({:.0}, {:.0}) shield {} controls {:?} shots {} bombs {} enemies {} wave {} breather {} sparks {} holes {} energy {:.0} demo {}",
+            "snapshot frame {} fps {fps:.1} phase {:?} paused {} score {} x{} lives {} ship ({:.0}, {:.0}) shield {} controls {:?} shots {} bombs {} enemies {} wave {} breather {} sparks {} holes {} energy {:.0} demo {}",
             self.frames,
             self.phase,
             self.paused,
             self.score,
+            self.mult,
             self.lives,
             self.ship.x,
             self.ship.y,
@@ -484,6 +568,24 @@ fn play_area(screen: Rect, hud: bool) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_multiplier_climbs_with_kills_and_drops_with_the_ship() {
+        let mut w = World::new(Rect::new(0, 0, 100, 30), 1, 8.0);
+        w.restart();
+        for _ in 0..MULT_STEP {
+            w.kill(Kind::Glob);
+        }
+        assert_eq!(w.mult, 2);
+        assert_eq!(w.score, 25 * MULT_STEP as u64);
+        w.kill(Kind::Cursor);
+        assert_eq!(w.score, 25 * MULT_STEP as u64 + 100);
+        // extra lives go by the points before the multiplier
+        assert_eq!(w.base, 25 * MULT_STEP as u64 + 50);
+        w.lose_ship(Kind::Cursor);
+        assert_eq!(w.mult, 1);
+        assert!(w.sounds.contains(&Sound::Lost));
+    }
 
     #[test]
     fn thousands_groups_digits() {

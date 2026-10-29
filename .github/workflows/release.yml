@@ -4,11 +4,12 @@
 # release.source = "github").
 #
 # On the pattern of ASCII Wars'. Tags look like v0.1.0. Linux builds
-# are glibc, not static musl: gamepads go through gilrs and udev, linked
-# dynamically, so the binary needs libudev1 (the manifest's system_deps).
+# are glibc, not static musl: sound goes through rodio's ALSA output and
+# gamepads through gilrs and udev, both linked dynamically, so the binary
+# needs libasound2 and libudev1 (the manifest's system_deps).
 # They are built on Ubuntu 22.04, so they run on glibc 2.35 and newer.
-# macOS and Windows use their own gamepad APIs. The archives carry
-# README.md and LICENSE.
+# macOS and Windows use rodio's own output (Core Audio, WASAPI) and their
+# own gamepad APIs. The archives carry README.md and LICENSE.
 
 name: release
 
@@ -46,14 +47,14 @@ jobs:
       - name: Build
         run: |
           sudo apt-get update
-          sudo apt-get install -y libudev-dev pkg-config
+          sudo apt-get install -y libasound2-dev libudev-dev pkg-config
           rustup update stable && rustup default stable
           cargo build --release --locked
           strip target/release/$BIN
           file target/release/$BIN
-          # libc, libm, libgcc_s, and libudev, which the manifest declares
+          # libc, libm, libgcc_s, and the two the manifest declares
           ldd target/release/$BIN
-          ! ldd target/release/$BIN | grep -v -E 'linux-vdso|libc\.so|libm\.so|libgcc_s|ld-linux|libudev'
+          ! ldd target/release/$BIN | grep -v -E 'linux-vdso|libc\.so|libm\.so|libgcc_s|ld-linux|libasound|libudev'
 
       - name: Test
         run: cargo test --release --locked

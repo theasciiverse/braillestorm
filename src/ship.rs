@@ -26,8 +26,8 @@ const SHOT: Rgb = [1.4, 1.2, 0.45];
 pub struct Shot {
     pub x: f32,
     pub y: f32,
-    vx: f32,
-    vy: f32,
+    pub vx: f32,
+    pub vy: f32,
     age: u32,
 }
 
@@ -57,11 +57,13 @@ pub struct Ship {
     pub shots: Vec<Shot>,
     /// Frames left untouchable.
     pub shield: u32,
+    /// A volley went out this frame.
+    pub fired: bool,
 }
 
 impl Ship {
     pub fn new(x: f32, y: f32) -> Ship {
-        Ship { x, y, vx: 0.0, vy: 0.0, angle: -std::f32::consts::FRAC_PI_2, cooldown: 0, volley: 0, bombs: BOMBS, shots: Vec::new(), shield: 0 }
+        Ship { x, y, vx: 0.0, vy: 0.0, angle: -std::f32::consts::FRAC_PI_2, cooldown: 0, volley: 0, bombs: BOMBS, shots: Vec::new(), shield: 0, fired: false }
     }
 
     /// Back on the field after being lost: still, shielded, no shots out.
@@ -69,6 +71,12 @@ impl Ship {
         (self.vx, self.vy) = (0.0, 0.0);
         self.shots.clear();
         self.shield = SHIELD;
+    }
+
+    /// A push from outside (a null's pull), added to the velocity.
+    pub fn nudge(&mut self, ax: f32, ay: f32) {
+        self.vx += ax;
+        self.vy += ay;
     }
 
     /// One frame. Returns where a bomb went off, if one did.
@@ -101,9 +109,11 @@ impl Ship {
         }
 
         self.cooldown = self.cooldown.saturating_sub(1);
+        self.fired = false;
         if let Some(a) = c.fire {
             if self.cooldown == 0 {
                 self.cooldown = COOLDOWN;
+                self.fired = true;
                 self.volley += 1;
                 let (ca, sa) = (a.cos(), a.sin());
                 let wobble = if self.volley % 2 == 0 { 0.02 } else { -0.02 };

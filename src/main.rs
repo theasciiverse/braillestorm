@@ -2,10 +2,12 @@
 //!
 //! The ship flies over the warping grid and fights off waves of enemies;
 //! three lives, an extra one (and a bomb) every 25,000 points, high score
-//! kept in the data folder. `--demo` lets the autopilot fly. `--shot` plays
+//! kept in the data folder; synthesised sound (`m` or `--mute` silences it).
+//! `--demo` lets the autopilot fly. `--shot` plays
 //! some seconds headless on the autopilot and prints the screen (`--cells`
 //! for `tools/shot.py`); `--bench` times frames without a terminal.
 
+mod audio;
 mod canvas;
 mod enemies;
 mod fx;
@@ -31,7 +33,7 @@ use world::{World, GRID_COLOURS};
 const FRAME: Duration = Duration::from_micros(16_667);
 const SNAPSHOT_EVERY: Duration = Duration::from_millis(500);
 
-const HELP: &str = "braillestorm [--demo] [--seed N] [--spacing N] [--fps N] [--wave N]
+const HELP: &str = "braillestorm [--demo] [--mute] [--seed N] [--spacing N] [--fps N] [--wave N]
 
 Twin-stick shooting over a warping grid, in Braille, in waves that grow:
 clear the field to bring on the next, with a bonus if you kept your ship.
@@ -43,6 +45,7 @@ Three lives; an extra life and bomb every 25,000 points.
   Space           bomb             (or right click, or a pad's A/shoulder)
   p / Enter       pause            (Enter or Space plays again after game over;
                                     a pad's Start pauses, Back quits)
+  m               sound on/off
   q / Esc         quit
 
   b  black hole on/off   h  hide the top line
@@ -54,6 +57,7 @@ Alacritty, iTerm2 and others report key releases) WASD stutters for a
 moment after the first press, and arrows fire sticky: the last arrow keeps
 firing until its opposite is pressed. The mouse and a gamepad work anywhere.
 
+  --mute                               start with the sound off
   --wave N                             start at wave N
   --fps N                              draw N frames a second (60; 30 or 20 for smaller preview casts)
   --shot SECS [--size WxH] [--wave N] [--cells]   play headless on the autopilot, print the screen
@@ -109,7 +113,8 @@ fn main() -> io::Result<()> {
     world.start_wave = wave;
     world.restart();
     let fps = arg("--fps").and_then(|v| v.parse::<u32>().ok()).unwrap_or(60);
-    let result = run(&mut terminal, &mut world, &mut input, fps);
+    let mut audio = audio::Audio::new(args.iter().any(|a| a == "--mute"));
+    let result = run(&mut terminal, &mut world, &mut input, &mut audio, fps);
     let _ = execute!(io::stdout(), DisableMouseCapture, DisableFocusChange);
     if kitty {
         let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
@@ -119,7 +124,7 @@ fn main() -> io::Result<()> {
     result
 }
 
-fn run(terminal: &mut ratatui::DefaultTerminal, world: &mut World, input: &mut Input, draw_fps: u32) -> io::Result<()> {
+fn run(terminal: &mut ratatui::DefaultTerminal, world: &mut World, input: &mut Input, audio: &mut audio::Audio, draw_fps: u32) -> io::Result<()> {
     let mut screen = terminal.get_frame().area();
     let mut next = Instant::now();
     let mut snapshot = Instant::now();
@@ -184,6 +189,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal, world: &mut World, input: &mut I
                     }
                 }
                 Cmd::Hole => world.toggle_hole(),
+                Cmd::Mute => audio.toggle_mute(),
                 Cmd::Hud => {
                     world.hud = !world.hud;
                     world.rebuild(screen);
@@ -202,11 +208,15 @@ fn run(terminal: &mut ratatui::DefaultTerminal, world: &mut World, input: &mut I
             controls = world.demo_controls();
         }
         world.update(controls);
+        for &s in &world.sounds {
+            audio.play(s);
+        }
 
         let keys = if input.exact { "keys exact" } else { "keys repeat" };
         let pad = input.pad_name.as_deref().map_or(String::new(), |n| format!("  pad {n}"));
         // the demo shows no aim, pad or timings, so a preview cast stays clean
-        let status = if world.demo { "DEMO".to_string() } else { format!("fire by {}  {keys}{pad}  {fps:>3.0} fps {draw_ms:>4.1} ms  {}x{}", input.aim_name(), screen.width, screen.height) };
+        let sound = if !audio.available() { "  no sound" } else if audio.muted { "  sound off" } else { "" };
+        let status = if world.demo { "DEMO".to_string() } else { format!("fire by {}  {keys}{pad}{sound}  {fps:>3.0} fps {draw_ms:>4.1} ms  {}x{}", input.aim_name(), screen.width, screen.height) };
         drawn += 1;
         if drawn % every == 0 {
             let t = Instant::now();

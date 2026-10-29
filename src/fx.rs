@@ -78,7 +78,9 @@ impl Fx {
         }
     }
 
-    pub fn update(&mut self, grid: &mut Grid, rng: &mut Rng, w: f32, h: f32) {
+    /// One frame; `wells` are the nulls on the field (x, y, strength),
+    /// which drink sparks as the black holes do.
+    pub fn update(&mut self, grid: &mut Grid, rng: &mut Rng, w: f32, h: f32, wells: &[(f32, f32, f32)]) {
         self.rings.retain_mut(|r| {
             r.r += RING_SPEED;
             r.r < RING_MAX
@@ -102,6 +104,16 @@ impl Fx {
                     return false;
                 }
                 let k = (0.9 + hole.mass * 0.05) / d2.max(25.0);
+                s.vx += dx * k;
+                s.vy += dy * k;
+            }
+            for &(wx, wy, ws) in wells {
+                let (dx, dy) = (wx - s.x, wy - s.y);
+                let d2 = dx * dx + dy * dy;
+                if d2 < 16.0 {
+                    return false;
+                }
+                let k = 1.4 * ws / d2.max(36.0);
                 s.vx += dx * k;
                 s.vy += dy * k;
             }
