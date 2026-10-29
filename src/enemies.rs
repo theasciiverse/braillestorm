@@ -8,6 +8,11 @@
 //!   children that rush the ship and overshoot. 100 points, children 25.
 //! - Spinner, the `|/-\` of a busy terminal: it spins in place, then dashes
 //!   straight across or up and down to line up with the ship. 75 points.
+//! - Zombie, `Z`, a process that will not die: shot, it leaves a defunct
+//!   body that gets back up unless that is shot too (reaped). 100 points,
+//!   the body 50.
+//! - Escape, `^[`: it marks a spot near the ship, then vanishes and comes
+//!   back there. 125 points.
 //! - Null, `∅`, the null device: it creeps after the ship pulling the grid,
 //!   sparks, shots and the ship itself in, and takes twenty-five hits. 250 points.
 //!
@@ -30,6 +35,10 @@ pub enum Kind {
     Child,
     Spinner,
     Null,
+    Zombie,
+    /// A shot zombie's body, harmless until it gets back up.
+    Defunct,
+    Escape,
 }
 
 impl Kind {
@@ -41,6 +50,8 @@ impl Kind {
             Kind::Child => 2.5,
             Kind::Spinner => 4.5,
             Kind::Null => 7.0,
+            Kind::Zombie | Kind::Defunct => 4.5,
+            Kind::Escape => 4.5,
         }
     }
 
@@ -52,6 +63,9 @@ impl Kind {
             Kind::Child => 25,
             Kind::Spinner => 75,
             Kind::Null => 250,
+            Kind::Zombie => 100,
+            Kind::Defunct => 50,
+            Kind::Escape => 125,
         }
     }
 
@@ -63,6 +77,8 @@ impl Kind {
             Kind::Child => [1.3, 0.6, 0.15],
             Kind::Spinner => [0.6, 1.3, 0.25],
             Kind::Null => [1.35, 1.15, 0.95],
+            Kind::Zombie | Kind::Defunct => [1.3, 0.28, 0.25],
+            Kind::Escape => [0.8, 0.95, 1.45],
         }
     }
 
@@ -86,6 +102,13 @@ const NULL_PULL: f32 = 0.05;
 const SPIN_WAIT: u32 = 50;
 const SPIN_DASH_FRAMES: u32 = 40;
 const SPIN_DASH: f32 = 2.6;
+/// Frames a defunct body lies before it gets back up.
+const REVIVE: u32 = 3 * 60;
+/// An escape jumps every `ESC_EVERY` frames (give or take a second), after
+/// marking where for `ESC_MARK`; it lands this far from the ship.
+const ESC_EVERY: u32 = 4 * 60;
+const ESC_MARK: u32 = 45;
+const ESC_LAND: f32 = 32.0;
 
 pub struct Enemy {
     pub kind: Kind,
@@ -99,8 +122,11 @@ pub struct Enemy {
     age: u32,
     /// Hits left.
     hp: u32,
-    /// A spinner's frames into spinning or dashing; a null's flinch after a hit.
+    /// A spinner's frames into spinning or dashing; a null's flinch after a
+    /// hit; a body's time down; an escape's time since its last jump.
     t: u32,
+    /// Where an escape will land.
+    to: (f32, f32),
 }
 
 impl Enemy {
@@ -125,6 +151,8 @@ pub struct Events {
     pub splits: u32,
     pub dents: u32,
     pub arrivals: u32,
+    pub revivals: u32,
+    pub jumps: u32,
 }
 
 /// A wave has begun: its number, and whether the one before it ended with
@@ -232,6 +260,10 @@ impl Enemies {
             _ => {
                 let kind = if wave >= 6 && roll > 0.82 {
                     Kind::Spinner
+                } else if wave >= 13 && roll > 0.74 {
+                    Kind::Escape
+                } else if wave >= 11 && roll > 0.66 {
+                    Kind::Zombie
                 } else if wave >= 4 && roll < 0.5 {
                     Kind::Fork
                 } else if wave >= 2 && roll < 0.75 {
@@ -251,7 +283,9 @@ impl Enemies {
     }
 
     fn add(&mut self, kind: Kind, x: f32, y: f32, rng: &mut Rng) {
-        self.list.push(Enemy { kind, x, y, vx: 0.0, vy: 0.0, angle: rng.f32() * TAU, age: 0, hp: kind.hits(), t: 0 });
+        // escapes start their clocks apart, so a group does not jump as one
+        let t = if kind == Kind::Escape { (rng.next() % 120) as u32 } else { 0 };
+        self.list.push(Enemy { kind, x, y, vx: 0.0, vy: 0.0, angle: rng.f32() * TAU, age: 0, hp: kind.hits(), t, to: (x, y) });
     }
 
     fn count(&self, kind: Kind) -> usize {
@@ -365,6 +399,48 @@ impl Enemies {
                     e.angle += 0.02;
                     e.t = e.t.saturating_sub(1);
                 }
+                Kind::Zombie => {
+                    // a dogged shamble, swaying as it comes
+                    let (tx, ty) = toward.unwrap_or((0.0, 0.0));
+                    e.t += 1;
+                    let sway = (e.t as f32 * 0.1).sin() * 0.35;
+                    e.vx = tx * 0.55 - ty * sway;
+                    e.vy = ty * 0.55 + tx * sway;
+                }
+                Kind::Defunct => {
+                    (e.vx, e.vy) = (0.0, 0.0);
+                    e.t += 1;
+                    if e.t >= REVIVE {
+                        // up again, fading in as anything new does
+                        e.kind = Kind::Zombie;
+                        e.age = 0;
+                        e.t = 0;
+                        self.events.revivals += 1;
+                    }
+                }
+                Kind::Escape => {
+                    let (tx, ty) = toward.unwrap_or((0.0, 0.0));
+                    e.vx = (e.vx + tx * 0.04) * 0.95;
+                    e.vy = (e.vy + ty * 0.04) * 0.95;
+                    e.t += 1;
+                    if e.t == ESC_EVERY - ESC_MARK {
+                        // mark a spot beside the ship, across its path
+                        if let Some((sx, sy)) = ship {
+                            let a = rng.f32() * TAU;
+                            e.to = ((sx + a.cos() * ESC_LAND).clamp(8.0, w - 8.0), (sy + a.sin() * ESC_LAND).clamp(8.0, h - 8.0));
+                        } else {
+                            e.t = 0;
+                        }
+                    } else if e.t >= ESC_EVERY {
+                        // gone, and back at the mark, briefly harmless
+                        (e.x, e.y) = e.to;
+                        (e.vx, e.vy) = (0.0, 0.0);
+                        e.age = ARRIVE - 20;
+                        e.t = (rng.next() % 60) as u32;
+                        self.events.jumps += 1;
+                        continue;
+                    }
+                }
             }
             e.x += e.vx * heat;
             e.y += e.vy * heat;
@@ -431,6 +507,17 @@ impl Enemies {
                     i += 1;
                     continue;
                 }
+                if self.list[i].kind == Kind::Zombie {
+                    // down, not out: the body stays where it fell
+                    let e = &mut self.list[i];
+                    self.events.shot.push((Kind::Zombie, e.x, e.y));
+                    fx.blast(grid, rng, e.x, e.y, e.kind.colour(), 40);
+                    e.kind = Kind::Defunct;
+                    e.t = 0;
+                    (e.vx, e.vy) = (0.0, 0.0);
+                    i += 1;
+                    continue;
+                }
                 let e = self.list.swap_remove(i);
                 self.events.shot.push((e.kind, e.x, e.y));
                 let sparks = if e.kind == Kind::Null { 400 } else { 60 };
@@ -446,7 +533,7 @@ impl Enemies {
                     for side in [-1.0f32, 1.0] {
                         let b = a + side * PI / 2.0;
                         let (vx, vy) = (b.cos() * 2.0, b.sin() * 2.0);
-                        self.list.push(Enemy { kind: Kind::Child, x: e.x + vx * 2.0, y: e.y + vy * 2.0, vx, vy, angle: 0.0, age: ARRIVE, hp: 1, t: 0 });
+                        self.list.push(Enemy { kind: Kind::Child, x: e.x + vx * 2.0, y: e.y + vy * 2.0, vx, vy, angle: 0.0, age: ARRIVE, hp: 1, t: 0, to: (0.0, 0.0) });
                     }
                 }
                 continue;
@@ -477,9 +564,10 @@ impl Enemies {
         fx.blast(grid, rng, e.x, e.y, e.kind.colour(), sparks);
     }
 
-    /// Whether a solid enemy touches a circle at (x, y).
+    /// Whether a solid enemy touches a circle at (x, y); a defunct body
+    /// does not hurt.
     pub fn touching(&self, x: f32, y: f32, r: f32) -> Option<Kind> {
-        self.list.iter().find(|e| e.solid() && (e.x - x).hypot(e.y - y) < e.kind.radius() + r).map(|e| e.kind)
+        self.list.iter().find(|e| e.solid() && e.kind != Kind::Defunct && (e.x - x).hypot(e.y - y) < e.kind.radius() + r).map(|e| e.kind)
     }
 
     pub fn nearest(&self, x: f32, y: f32) -> Option<(f32, f32)> {
@@ -551,6 +639,48 @@ impl Enemies {
                     }
                     bar(e.angle, 1.0, c);
                     c.circle(x, y, 1.0, col);
+                }
+                Kind::Zombie | Kind::Defunct => {
+                    // a Z, swaying; down, it lies dim, brightening and
+                    // twitching as it is about to get back up
+                    let (k, tilt) = if e.kind == Kind::Zombie {
+                        (1.0, (e.t as f32 * 0.1).sin() * 0.2)
+                    } else {
+                        let f = e.t as f32 / REVIVE as f32;
+                        let twitch = if f > 0.7 && (e.t / 3) % 2 == 0 { 0.15 } else { 0.0 };
+                        (0.25 + 0.5 * f * f, std::f32::consts::FRAC_PI_2 + twitch)
+                    };
+                    let col = [col[0] * k, col[1] * k, col[2] * k];
+                    let (ca, sa) = (tilt.cos(), tilt.sin());
+                    let at = |px: f32, py: f32| (x + (px * ca - py * sa) * r, y + (px * sa + py * ca) * r * 1.2);
+                    let (a, b, c2, d) = (at(-0.7, -0.8), at(0.7, -0.8), at(-0.7, 0.8), at(0.7, 0.8));
+                    c.line(a.0, a.1, b.0, b.1, col);
+                    c.line(b.0, b.1, c2.0, c2.1, col);
+                    c.line(c2.0, c2.1, d.0, d.1, col);
+                }
+                Kind::Escape => {
+                    // ^[ : a bracket with a caret over its shoulder
+                    let (hw, hh) = (r * 0.5, r * 1.2);
+                    let bx = x + r * 0.15;
+                    c.line(bx + hw, y - hh, bx, y - hh, col);
+                    c.line(bx, y - hh, bx, y + hh, col);
+                    c.line(bx, y + hh, bx + hw, y + hh, col);
+                    c.line(x - r * 1.1, y - hh * 0.2, x - r * 0.6, y - hh * 0.75, col);
+                    c.line(x - r * 0.6, y - hh * 0.75, x - r * 0.1, y - hh * 0.2, col);
+                    // the mark where it will land, blinking faster as it nears
+                    if e.solid() && e.t >= ESC_EVERY - ESC_MARK {
+                        let left = ESC_EVERY - e.t;
+                        if (left / if left > 20 { 6 } else { 3 }) % 2 == 0 {
+                            let (mx, my) = e.to;
+                            let m = [col[0] * 0.5, col[1] * 0.5, col[2] * 0.5];
+                            c.line(mx - r * 0.8, my - r, mx - r * 0.2, my - r, m);
+                            c.line(mx - r * 0.8, my - r, mx - r * 0.8, my + r, m);
+                            c.line(mx - r * 0.8, my + r, mx - r * 0.2, my + r, m);
+                            c.line(mx + r * 0.8, my - r, mx + r * 0.2, my - r, m);
+                            c.line(mx + r * 0.8, my - r, mx + r * 0.8, my + r, m);
+                            c.line(mx + r * 0.8, my + r, mx + r * 0.2, my + r, m);
+                        }
+                    }
                 }
                 Kind::Null => {
                     // the null sign: a ring with a stroke through it, and
@@ -677,6 +807,50 @@ mod tests {
         let (ax, ay) = en.pull_at(130.0, 50.0, 1.0);
         assert!(ax < 0.0 && ay.abs() < 1e-6, "{ax} {ay}");
         assert_eq!(en.pull_at(100.0 + NULL_REACH + 1.0, 50.0, 1.0), (0.0, 0.0));
+    }
+
+    #[test]
+    fn a_zombie_gets_back_up_unless_reaped() {
+        let mut rng = Rng::new(3);
+        let mut grid = Grid::new(200, 116, 8.0);
+        let mut fx = Fx::default();
+        let mut en = Enemies::default();
+        en.add(Kind::Zombie, 100.0, 50.0, &mut rng);
+        en.list[0].age = ARRIVE;
+        en.shoot(&mut vec![Shot::test(100.0, 50.0)], &mut grid, &mut fx, &mut rng);
+        assert_eq!(en.list[0].kind, Kind::Defunct);
+        assert_eq!(en.touching(100.0, 50.0, 4.0), None, "a body does not hurt");
+        for _ in 0..REVIVE {
+            en.update(&mut rng, 200.0, 116.0, None);
+        }
+        assert_eq!(en.list[0].kind, Kind::Zombie);
+        assert_eq!(en.events.revivals, 1);
+        // shot again, and the body reaped this time
+        en.list[0].age = ARRIVE;
+        en.shoot(&mut vec![Shot::test(en.list[0].x, en.list[0].y)], &mut grid, &mut fx, &mut rng);
+        let (bx, by) = (en.list[0].x, en.list[0].y);
+        en.shoot(&mut vec![Shot::test(bx, by)], &mut grid, &mut fx, &mut rng);
+        assert!(en.list.is_empty());
+        let kinds: Vec<Kind> = en.events.shot.iter().map(|s| s.0).collect();
+        assert_eq!(kinds, vec![Kind::Zombie, Kind::Zombie, Kind::Defunct]);
+    }
+
+    #[test]
+    fn an_escape_lands_beside_the_ship() {
+        let mut rng = Rng::new(3);
+        let mut en = Enemies::default();
+        en.add(Kind::Escape, 20.0, 20.0, &mut rng);
+        en.list[0].age = ARRIVE;
+        en.list[0].t = 0;
+        let ship = (120.0, 70.0);
+        for _ in 0..ESC_EVERY {
+            en.update(&mut rng, 200.0, 116.0, Some(ship));
+        }
+        let e = &en.list[0];
+        assert_eq!(en.events.jumps, 1);
+        let d = (e.x - ship.0).hypot(e.y - ship.1);
+        assert!((d - ESC_LAND).abs() < 1.0, "landed {d} from the ship");
+        assert!(!e.solid(), "harmless as it lands");
     }
 
     #[test]

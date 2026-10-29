@@ -8,9 +8,12 @@
 //! - Bursts climb a pentatonic scale with the score multiplier, so a long
 //!   streak sounds higher and higher.
 //!
+//! - The music (`music.rs`) plays under it all, steered each frame.
+//!
 //! Without an audio device, or with `--mute`, every call does nothing.
 
 use crate::enemies::Kind;
+use crate::music::{self, Ctrl};
 use rodio::buffer::SamplesBuffer;
 use rodio::MixerDeviceSink;
 use std::f32::consts::TAU;
@@ -33,6 +36,10 @@ pub enum Sound {
     Dent,
     /// An enemy has begun fading in.
     Arrive,
+    /// A zombie's body got back up.
+    Revive,
+    /// An escape jumped.
+    Jump,
     Bomb,
     Lost,
     Back,
@@ -57,6 +64,11 @@ enum Sfx {
     Child,
     Spinner,
     Null,
+    Zombie,
+    Reap,
+    Escape,
+    Revive,
+    Jump,
     Split,
     Dent,
     Arrive,
@@ -72,7 +84,7 @@ enum Sfx {
     GameOver,
 }
 
-const ALL_SFX: [Sfx; 20] = [
+const ALL_SFX: [Sfx; 25] = [
     Sfx::Fire,
     Sfx::Glob,
     Sfx::Cursor,
@@ -80,6 +92,11 @@ const ALL_SFX: [Sfx; 20] = [
     Sfx::Child,
     Sfx::Spinner,
     Sfx::Null,
+    Sfx::Zombie,
+    Sfx::Reap,
+    Sfx::Escape,
+    Sfx::Revive,
+    Sfx::Jump,
     Sfx::Split,
     Sfx::Dent,
     Sfx::Arrive,
@@ -105,12 +122,15 @@ pub struct Audio {
     bank: Vec<SamplesBuffer>,
     notes: Vec<SamplesBuffer>,
     pub muted: bool,
+    /// Effects without the music.
+    pub no_music: bool,
+    music: std::sync::Arc<std::sync::Mutex<Ctrl>>,
     last: [Option<Instant>; ALL_SFX.len()],
     last_note: Option<Instant>,
 }
 
 impl Audio {
-    pub fn new(muted: bool) -> Audio {
+    pub fn new(muted: bool, no_music: bool) -> Audio {
         let sink = if muted {
             None
         } else {
@@ -130,8 +150,25 @@ impl Audio {
         } else {
             (Vec::new(), Vec::new())
         };
+        let music = music::shared();
+        if let Some(s) = &sink {
+            s.mixer().add(rodio::Source::amplify(music::Band::new(music.clone()), 0.5));
+        }
         log::info!("audio {}", if sink.is_some() { "on" } else { "off" });
-        Audio { sink, bank, notes, muted, last: [None; ALL_SFX.len()], last_note: None }
+        Audio { sink, bank, notes, muted, no_music, music, last: [None; ALL_SFX.len()], last_note: None }
+    }
+
+    /// Steer the music for this frame.
+    pub fn music(&mut self, mut ctrl: Ctrl) {
+        ctrl.muted = self.muted || self.no_music;
+        if let Ok(mut c) = self.music.lock() {
+            *c = ctrl;
+        }
+    }
+
+    pub fn toggle_music(&mut self) {
+        self.no_music = !self.no_music;
+        log::info!("music {}", if self.no_music { "off" } else { "on" });
     }
 
     /// Play what the game asked for.
@@ -155,12 +192,17 @@ impl Audio {
                     Kind::Child => Sfx::Child,
                     Kind::Spinner => Sfx::Spinner,
                     Kind::Null => Sfx::Null,
+                    Kind::Zombie => Sfx::Zombie,
+                    Kind::Defunct => Sfx::Reap,
+                    Kind::Escape => Sfx::Escape,
                 }
             }
             Sound::Fire => Sfx::Fire,
             Sound::Split => Sfx::Split,
             Sound::Dent => Sfx::Dent,
             Sound::Arrive => Sfx::Arrive,
+            Sound::Revive => Sfx::Revive,
+            Sound::Jump => Sfx::Jump,
             Sound::Bomb => Sfx::Bomb,
             Sound::Lost => Sfx::Lost,
             Sound::Back => Sfx::Back,
@@ -343,6 +385,16 @@ fn render_sfx(s: Sfx) -> Vec<f32> {
         Sfx::Spinner => crush(glide(0.25, 900.0, 140.0, 0.15, saw), 8.0, 16),
         // the null device collapses: a deep implosion, then silence rushing in
         Sfx::Null => chord(&[glide(0.9, 55.0, 25.0, 0.45, sine), rumble(0.9, 300.0, 4000.0, 0.7, 17), glide(0.5, 2400.0, 200.0, 0.05, sine)]),
+        // a zombie drops with a groan
+        Sfx::Zombie => chord(&[glide(0.35, 180.0, 70.0, 0.18, saw), rumble(0.2, 3000.0, 400.0, 0.3, 41)]),
+        // the body reaped: an airy rush, gone for good
+        Sfx::Reap => rumble(0.3, 800.0, 6000.0, 0.35, 43),
+        // an escape shot: a sharp zap
+        Sfx::Escape => crush(glide(0.12, 2600.0, 500.0, 0.15, square), 5.0, 12),
+        // a body getting back up: a rising growl
+        Sfx::Revive => glide(0.4, 60.0, 160.0, 0.2, saw),
+        // an escape jumping: a quick blip out and back
+        Sfx::Jump => chord(&[glide(0.06, 1800.0, 3600.0, 0.06, sine), synth(0.09, 47, |t, _| if t > 0.05 { (TAU * 1400.0 * t).sin() * (-(t - 0.05) * 80.0).exp() * 0.08 } else { 0.0 })]),
         Sfx::Split => synth(0.08, 19, |t, n| n.next() * (-t * 60.0).exp() * 0.2),
         // a hit on something that takes more: a dull knock
         Sfx::Dent => synth(0.06, 23, |t, _| ((TAU * 150.0 * t).sin() * 0.8 + (TAU * 330.0 * t).sin() * 0.2) * (-t * 70.0).exp() * 0.2),

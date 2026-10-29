@@ -5,14 +5,14 @@ sub-cells) so the ships, enemies and the warping grid read as glowing vector lin
 Brought to the terminal from Mark Incitti's GridWars (2005 to 2006, BlitzMax),
 itself a free tribute to Bizarre Creations' Geometry Wars (2003 to 2005).
 
-**Status** (2026-10-29, version 0.4.0): playable in waves, with sound. The
+**Status** (2026-10-29, version 0.5.0): playable in waves, with sound and music. The
 ship (a shell prompt `❯` as a chevron) flies over the warping grid, fires a
-twin stream and bombs, against five enemy kinds of our own (below) in
+twin stream and bombs, against seven enemy kinds of our own (below) in
 numbered waves, each announced by a banner of big Braille letters; a score
 multiplier up to x10; pick-ups; stages that change the grid's colour; three lives, an extra life and bomb every 25,000
 points before the multiplier, game over and play again, pause, high score
-in `$XDG_DATA_HOME/braillestorm/hiscore`. Synthesised sound, `m` or
-`--mute` to silence it. A demo autopilot flies, dodges and shoots. Route
+in `$XDG_DATA_HOME/braillestorm/hiscore`. Synthesised sound and music, `m`
+or `--mute` to silence both, `n` or `--no-music` for effects only. A demo autopilot flies, dodges and shoots. Route
 decided by David on 2026-10-20: a spiritual successor of our own (below);
 everything else here is a first proposal. What comes next, release by
 release, is in `ROADMAP.md`.
@@ -28,7 +28,7 @@ Wars' pattern): glibc Linux on Ubuntu 22.04 (x86_64, aarch64; libasound
 and libudev linked dynamically, the manifest's system_deps), macOS and Windows (MSVC),
 x86_64 and ARM64 each; archives `braillestorm-<target>` with the stripped
 binary, README.md and LICENSE, plus SHA256SUMS.
-Tags `v<version>`, now `v0.4.0` (2026-10-29). Only the Linux steps were
+Tags `v<version>`, now `v0.5.0` (2026-10-29). Only the Linux steps were
 run here (no rustup for other targets), so macOS and Windows build first
 on GitHub.
 
@@ -60,7 +60,7 @@ Controls: WASD or the left stick move; arrows, the left mouse button held
 (fires at the pointer) or the right stick fire; Space, right click or a
 pad's A or shoulder buttons bomb (3); p or Enter pause (a pad's Start;
 Back quits), Space or Enter play again after game over; m sound on or
-off; losing focus pauses. Sandbox keys from the grid test: b
+off, n music on or off; losing focus pauses. Sandbox keys from the grid test: b
 black hole, h top line, F2 glow, F3 grid colour, F4/F5 spacing, F6 random
 blasts, F7 autopilot. With the kitty keyboard protocol keys are exact;
 without it WASD is held while repeats arrive (stutters briefly after the
@@ -75,7 +75,8 @@ border pinned; blast and pull), `src/fx.rs` (sparks, black holes, bomb
 rings), `src/ship.rs` (ship, shots, bombs, shield after coming back),
 `src/enemies.rs` (the roster, the waves, and what happened each frame as
 `Events`), `src/audio.rs` (every sound synthesised at start-up, after
-Brickspire's; rodio, ALSA on Linux), `src/text.rs` (our 5x7 pixel
+Brickspire's; rodio, ALSA on Linux), `src/music.rs` (the endless music
+source, after Kaiku's, steered by `World::music_ctrl` each frame), `src/text.rs` (our 5x7 pixel
 font drawn as dots, for the banners), `src/save.rs`
 (high score), `src/input.rs` (keys, mouse, gamepad to move/fire/bomb, after
 Panzer's), `src/world.rs` (the field, score and multiplier, lives, wave banners and
@@ -202,7 +203,9 @@ registrar checked). USPTO and EUIPO not searched.
 5. Named waves with a banner and a breather between them. Done (0.2.0).
 6. Sound, a score multiplier and two more enemy kinds (spinner, null).
    Done (0.3.0).
-7. Pick-ups and stages. Done (0.4.0). What follows is in `ROADMAP.md`.
+7. Pick-ups and stages. Done (0.4.0).
+8. Zombie, escape and music. Done (0.5.0). What is left for 1.0.0 is in
+   `ROADMAP.md`.
 
 ## Enemies (our own, 2026-10-20)
 
@@ -224,6 +227,16 @@ hurt meanwhile; new ones keep clear of the ship.
   (2.6 dots a frame, at most 40 frames) along whichever axis lines it up
   with the ship, stopping when level with it or at a wall. From wave 6,
   about one spawn in six.
+- **Zombie** `Z` (red, 100; 2026-10-29, 0.5.0): shambles after the ship,
+  swaying. Shot, it leaves a **defunct** body (50) where it fell, dim and
+  harmless, brightening and twitching as 3 s run out; then it gets back up
+  and fades in like anything new. Shooting the body reaps it for good; a
+  bomb takes both. From wave 11, spawn rolls 0.66 to 0.74.
+- **Escape** `^[` (pale blue, 125; 2026-10-29, 0.5.0): drifts after the
+  ship; every 4 s (clocks staggered) it marks a spot 32 dots from the ship
+  in a random direction with a blinking pair of brackets for 45 frames,
+  then vanishes and lands there, harmless for its first 20 frames. From
+  wave 13, spawn rolls 0.74 to 0.82.
 - **Null** `∅` (warm white, 250; 2026-10-29): the null device, a ring with
   the glyph's leaning stroke and a faint halo. Creeps after the ship, pulls
   the grid down within 70 dots, drinks sparks, bends the ship's shots and
@@ -295,13 +308,27 @@ nothing is within 30 dots of it.
 **Stages**: every five waves the grid (and the banner with it) moves on to
 the next of the four colours; F3 picks where the cycle starts.
 
+## Music (2026-10-29, 0.5.0)
+
+`src/music.rs`, one endless source on the mixer at half volume, on
+Kaiku's pattern: a minor-key progression (i, VI, III, VII in A minor) with
+a low-passed saw bass in eighths, four-on-the-floor kick, hats from the
+second wave (every sixteenth from about wave 13), an arpeggio and a snare
+as the field fills, a soft triangle pad every bar, a dotted-eighth echo on
+pad and arpeggio. Tempo 112 bpm at wave 1 to 140 by wave 30; each stage
+moves the key (0, +3, -2, +5 semitones). Lost ship, pause and game over
+drop it to the pad. About 0.2% of real time to render. Not yet heard by
+David.
+
 ## Sound (2026-10-29)
 
 All synthesised in `src/audio.rs` at start-up, no files, on Brickspire's
 pattern; nothing of GridWars'. A soft zip for each volley (kept very low,
 it plays a dozen times a second); a burst of its own for every kind (glob
 pop, cursor blip stepped like bits going blank, fork crack, child chirp,
-spinner winding down, null implosion); a ping up a pentatonic scale under
+spinner winding down, null implosion, zombie groan, the body reaped as
+an airy rush, escape zap); a rising growl when a body gets back up and a
+blip when an escape jumps; a ping up a pentatonic scale under
 each burst once the multiplier is past x1; a knock when a shot dents a
 null; a faint shimmer when something fades in; bomb crack and boom; the
 ship lost; a rising shimmer when it is back; a bright run for a pick-up

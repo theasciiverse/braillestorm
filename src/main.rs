@@ -2,7 +2,8 @@
 //!
 //! The ship flies over the warping grid and fights off waves of enemies;
 //! three lives, an extra one (and a bomb) every 25,000 points, high score
-//! kept in the data folder; synthesised sound (`m` or `--mute` silences it).
+//! kept in the data folder; synthesised sound and music (`m` or `--mute`
+//! silences both, `n` or `--no-music` the music).
 //! `--demo` lets the autopilot fly. `--shot` plays
 //! some seconds headless on the autopilot and prints the screen (`--cells`
 //! for `tools/shot.py`); `--bench` times frames without a terminal.
@@ -13,6 +14,7 @@ mod enemies;
 mod fx;
 mod grid;
 mod input;
+mod music;
 mod pickups;
 mod rng;
 mod save;
@@ -34,7 +36,7 @@ use world::{World, GRID_COLOURS};
 const FRAME: Duration = Duration::from_micros(16_667);
 const SNAPSHOT_EVERY: Duration = Duration::from_millis(500);
 
-const HELP: &str = "braillestorm [--demo] [--mute] [--seed N] [--spacing N] [--fps N] [--wave N]
+const HELP: &str = "braillestorm [--demo] [--mute] [--no-music] [--seed N] [--spacing N] [--fps N] [--wave N]
 
 Twin-stick shooting over a warping grid, in Braille, in waves that grow:
 clear the field to bring on the next, with a bonus if you kept your ship.
@@ -46,7 +48,7 @@ Three lives; an extra life and bomb every 25,000 points.
   Space           bomb             (or right click, or a pad's A/shoulder)
   p / Enter       pause            (Enter or Space plays again after game over;
                                     a pad's Start pauses, Back quits)
-  m               sound on/off
+  m               sound on/off     n  music on/off
   q / Esc         quit
 
   b  black hole on/off   h  hide the top line
@@ -59,6 +61,7 @@ moment after the first press, and arrows fire sticky: the last arrow keeps
 firing until its opposite is pressed. The mouse and a gamepad work anywhere.
 
   --mute                               start with the sound off
+  --no-music                           effects without the music
   --wave N                             start at wave N
   --fps N                              draw N frames a second (60; 30 or 20 for smaller preview casts)
   --shot SECS [--size WxH] [--wave N] [--cells]   play headless on the autopilot, print the screen
@@ -114,7 +117,7 @@ fn main() -> io::Result<()> {
     world.start_wave = wave;
     world.restart();
     let fps = arg("--fps").and_then(|v| v.parse::<u32>().ok()).unwrap_or(60);
-    let mut audio = audio::Audio::new(args.iter().any(|a| a == "--mute"));
+    let mut audio = audio::Audio::new(args.iter().any(|a| a == "--mute"), args.iter().any(|a| a == "--no-music"));
     let result = run(&mut terminal, &mut world, &mut input, &mut audio, fps);
     let _ = execute!(io::stdout(), DisableMouseCapture, DisableFocusChange);
     if kitty {
@@ -191,6 +194,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal, world: &mut World, input: &mut I
                 }
                 Cmd::Hole => world.toggle_hole(),
                 Cmd::Mute => audio.toggle_mute(),
+                Cmd::Music => audio.toggle_music(),
                 Cmd::Hud => {
                     world.hud = !world.hud;
                     world.rebuild(screen);
@@ -212,6 +216,7 @@ fn run(terminal: &mut ratatui::DefaultTerminal, world: &mut World, input: &mut I
         for &s in &world.sounds {
             audio.play(s);
         }
+        audio.music(world.music_ctrl());
 
         let keys = if input.exact { "keys exact" } else { "keys repeat" };
         let pad = input.pad_name.as_deref().map_or(String::new(), |n| format!("  pad {n}"));

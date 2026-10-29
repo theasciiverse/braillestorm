@@ -374,6 +374,12 @@ impl World {
         if ev.arrivals > 0 {
             self.sounds.push(Sound::Arrive);
         }
+        if ev.revivals > 0 {
+            self.sounds.push(Sound::Revive);
+        }
+        if ev.jumps > 0 {
+            self.sounds.push(Sound::Jump);
+        }
     }
 
     fn kill(&mut self, k: Kind) {
@@ -547,6 +553,21 @@ impl World {
             if shown == 0 && n < l.chars().count() {
                 break;
             }
+        }
+    }
+
+    /// What the music should do now: faster as the waves go by, fuller as
+    /// the field fills, in the stage's key, a pad when not flying.
+    pub fn music_ctrl(&self) -> crate::music::Ctrl {
+        let (w, h) = self.dims();
+        let size = (w * h / (200.0 * 116.0)).sqrt().clamp(1.0, 4.0);
+        let stage = (self.enemies.wave.saturating_sub(1) / STAGE_WAVES) as usize;
+        crate::music::Ctrl {
+            heat: (self.enemies.wave.saturating_sub(1) as f32 / 29.0).min(1.0),
+            crowd: (self.enemies.list.len() as f32 / (25.0 * size)).min(1.0),
+            key: crate::music::STAGE_KEYS[stage % crate::music::STAGE_KEYS.len()],
+            playing: self.phase == Phase::Play && !self.paused,
+            muted: false,
         }
     }
 

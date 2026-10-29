@@ -5,8 +5,9 @@
 Something has gone badly wrong in your terminal: globs tumble loose, block
 cursors blink awake and hunt you down, forks split into two quick children
 when you shoot them, spinners whirl in place and then dash straight at your
-line, and the null device itself creeps after you, swallowing sparks, bending
-your shots and dragging you in. You're a lone shell prompt with a twin stream of fire and
+line, zombies get back up unless you shoot their bodies too, escapes vanish
+and reappear right beside you, and the null device itself creeps after you,
+swallowing sparks, bending your shots and dragging you in. You're a lone shell prompt with a twin stream of fire and
 three bombs, in a twin-stick arena shooter drawn in Braille dots as thin
 glowing lines, over a grid that dents, ripples and rings with every shot,
 burst and bomb. Waves never stop, each bigger and faster than the last, and
@@ -36,7 +37,7 @@ To build it yourself: `cargo run --release`.
 - **Arrow keys**: fire; or hold the **left mouse button** to fire at the pointer
 - **Space** or **right click**: bomb
 - **P** or **Enter**: pause; **Space** or **Enter**: play again after game over
-- **M**: sound on or off
+- **M**: sound on or off, **N**: music on or off
 - **Q** or **Esc**: quit
 - **B**: a black hole on or off (it drifts, drinks the sparks and sucks the
   grid down), **H**: hide the top line
@@ -54,6 +55,7 @@ press the opposite one. `braillestorm --help` lists every key and option.
 
 - `--demo`: watch the computer play
 - `--mute`: start with the sound off
+- `--no-music`: the sound effects without the music
 - `--wave N`: start at wave N
 - `--fps N`: draw fewer frames a second (the game still runs at 60)
 

@@ -22,10 +22,12 @@ From 0.4.0 on this is a proposal (2026-10-29), not settled yet.
   minute: W wide fire, R rapid fire, S a short shield, B an extra bomb
 - Stages: every five waves the grid moves on to the next colour
 
-## 0.5.0: more of the storm
+## 0.5.0: built
 
-- [ ] One or two more enemy kinds of our own
-- [ ] Music, synthesised, that rises with the waves
+- Two more enemy kinds: the zombie, whose body gets back up unless it is
+  reaped, and the escape, which marks a spot by the ship and jumps there
+- Music, synthesised: faster with the waves, fuller as the field fills, a
+  key for each stage
 
 ## 1.0.0
 
