@@ -29,9 +29,11 @@ Wars' pattern): glibc Linux on Ubuntu 22.04 (x86_64, aarch64; libasound
 and libudev linked dynamically, the manifest's system_deps), macOS and Windows (MSVC),
 x86_64 and ARM64 each; archives `braillestorm-<target>` with the stripped
 binary, README.md and LICENSE, plus SHA256SUMS.
-Tags `v<version>`, now `v1.0.0` (2026-10-29). Only the Linux steps were
-run here (no rustup for other targets), so macOS and Windows build first
-on GitHub.
+Tags `v<version>`, now `v1.0.0` (2026-10-29). Actions is blocked by
+billing, so the v1.0.0 GitHub release has Linux x86_64 only, built here in
+an `ubuntu:22.04` container with the workflow's Linux steps (glibc 2.35, same
+ldd check, tests); macOS, Windows and Linux aarch64 follow when the
+workflow can run (`workflow_dispatch` with tag `v1.0.0` adds them).
 
 The preview (`asciiverse/record-preview.sh`, hub's `castrec.py`): `--demo
 --seed 6 --fps 20 --wave 3 --mute`, 27 s with the banners for waves 3, 4 and 5,
