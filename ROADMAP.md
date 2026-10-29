@@ -29,6 +29,6 @@ From 0.4.0 on this is a proposal (2026-10-29), not settled yet.
 - Music, synthesised: faster with the waves, fuller as the field fills, a
   key for each stage
 
-## 1.0.0
+## 1.0.0: built
 
-- [ ] Everything above played through and tuned
+- Everything above played through and tuned (David, 2026-10-29)

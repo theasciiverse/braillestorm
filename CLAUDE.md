@@ -5,7 +5,8 @@ sub-cells) so the ships, enemies and the warping grid read as glowing vector lin
 Brought to the terminal from Mark Incitti's GridWars (2005 to 2006, BlitzMax),
 itself a free tribute to Bizarre Creations' Geometry Wars (2003 to 2005).
 
-**Status** (2026-10-29, version 0.5.0): playable in waves, with sound and music. The
+**Status** (2026-10-29, version 1.0.0): finished; David played it through and
+signed it off ("looks and sounds amazing"). Playable in waves, with sound and music. The
 ship (a shell prompt `❯` as a chevron) flies over the warping grid, fires a
 twin stream and bombs, against seven enemy kinds of our own (below) in
 numbered waves, each announced by a banner of big Braille letters; a score
@@ -28,7 +29,7 @@ Wars' pattern): glibc Linux on Ubuntu 22.04 (x86_64, aarch64; libasound
 and libudev linked dynamically, the manifest's system_deps), macOS and Windows (MSVC),
 x86_64 and ARM64 each; archives `braillestorm-<target>` with the stripped
 binary, README.md and LICENSE, plus SHA256SUMS.
-Tags `v<version>`, now `v0.5.0` (2026-10-29). Only the Linux steps were
+Tags `v<version>`, now `v1.0.0` (2026-10-29). Only the Linux steps were
 run here (no rustup for other targets), so macOS and Windows build first
 on GitHub.
 
@@ -204,8 +205,8 @@ registrar checked). USPTO and EUIPO not searched.
 6. Sound, a score multiplier and two more enemy kinds (spinner, null).
    Done (0.3.0).
 7. Pick-ups and stages. Done (0.4.0).
-8. Zombie, escape and music. Done (0.5.0). What is left for 1.0.0 is in
-   `ROADMAP.md`.
+8. Zombie, escape and music. Done (0.5.0).
+9. Played through and tuned. Done (1.0.0, 2026-10-29).
 
 ## Enemies (our own, 2026-10-20)
 
@@ -317,8 +318,8 @@ second wave (every sixteenth from about wave 13), an arpeggio and a snare
 as the field fills, a soft triangle pad every bar, a dotted-eighth echo on
 pad and arpeggio. Tempo 112 bpm at wave 1 to 140 by wave 30; each stage
 moves the key (0, +3, -2, +5 semitones). Lost ship, pause and game over
-drop it to the pad. About 0.2% of real time to render. Not yet heard by
-David.
+drop it to the pad. About 0.2% of real time to render. Heard and approved
+by David, 2026-10-29.
 
 ## Sound (2026-10-29)
 
@@ -338,7 +339,8 @@ over. The same effect again within 40 ms is skipped (60 for volleys, 140
 for arrivals), so a bomb clearing forty enemies is one bang. Peaks checked
 by a test (all under 1.0; the bomb and the ship lost are the loudest at
 about 0.8). Without an audio device the game is silent and says "no sound"
-in the top line; `m` or `--mute` silences it. Not yet heard by David.
+in the top line; `m` or `--mute` silences it. Heard and approved by David,
+2026-10-29.
 
 Measured 2026-10-29 with the new kinds and the multiplier (`--bench 36000`
 at 100x30, seeds 1 to 5): the autopilot's games end at waves 22 to 37,
