@@ -1,6 +1,6 @@
 [package]
 name = "braillestorm"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
 description = "Asciiverse twin-stick arena shooter drawn in Braille vector lines over a warping grid, Rust + Ratatui"
@@ -14,7 +14,7 @@ ratatui = "0.30"
 log = "0.4"
 env_logger = "0.11"
 rodio = { version = "0.22", default-features = false, features = ["playback"] }
-gilrs = { version = "0.11", optional = true }
+gilrs = { version = "0.11", optional = true, default-features = false, features = ["xinput"] }
 
 [features]
 default = ["gamepad"]

@@ -32,3 +32,10 @@ From 0.4.0 on this is a proposal (2026-10-29), not settled yet.
 ## 1.0.0: built
 
 - Everything above played through and tuned (David, 2026-10-29)
+
+## 1.0.1: built
+
+- [x] Gamepads work on Windows: gilrs reads them through XInput, since its
+  default (Windows Gaming Input) only reports to a program with a focused
+  window of its own, which a terminal game never has
+
